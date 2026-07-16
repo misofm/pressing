@@ -4,44 +4,52 @@
 /// A primary record sale — a *Drop*.
 ///
 /// A `Drop` is a shared object that mints and sells numbered `Record` copies of a
-/// release, forwarding each payment to the release's address, with no cap on how many
-/// may ever be sold. Each purchase mints a `Record` whose UID is *derived* off the
-/// `Drop`'s own UID (keyed by the 1-based serial number it was sold at), so every copy
-/// is deterministically addressable from its drop and can be minted at most once.
+/// release, forwarding each payment to the release's address. Each purchase mints a
+/// `Record` whose UID is *derived* off the `Drop`'s own UID (keyed by the 1-based
+/// serial number it was sold at), so every copy is deterministically addressable from
+/// its drop and can be minted at most once.
 ///
-/// # No access gate
+/// # Scarcity is the artist's choice
 ///
-/// A drop never gates *who* may buy. Supply is uncapped and anyone may buy a copy while
-/// the drop is live. How "rare" a record becomes is a matter of how its owner engages
-/// with it over time (an extension concern), never of manufactured scarcity at the
-/// point of sale — so there are no caps, allowlists, auctions, or raffles here.
+/// A drop may be capped (`max_supply` — "1000 records only"), time-boxed
+/// (`end_timestamp_ms` — "two weeks only"), both, or neither (an open, evergreen
+/// sale). Scarcity here is a per-edition decision by the artist, not a protocol
+/// stance — and it is never a dead end: fans who miss a drop can always be answered
+/// with a new edition. What a drop never has is an access gate: no allowlists,
+/// auctions, or raffles — while a drop is live, anyone may buy.
 ///
-/// # Editions
+/// # Editions — one live drop per release
 ///
-/// A release may have many drops — a first run, a re-run, a variant. Each is an
-/// *edition*: a 0-based run number scoped to the release. Drop UIDs are themselves
-/// *derived* off the shared `DropRegistry`, keyed by `DropKey(release_id, edition)`,
-/// which gives two things for free:
-/// - **deterministic addressing** — a drop's address is computable from its release
-///   and edition, and a record's from its drop and number; and
-/// - **gap-free sequencing** — creating edition `n > 0` asserts edition `n - 1` already
-///   exists for that release, and `derived_object::claim` rejects a duplicate edition.
+/// A release sells through at most ONE drop at a time. `new` opens edition `0`;
+/// `new_edition` opens edition `n + 1` by CONSUMING edition `n` — the predecessor
+/// shared object is destroyed, so two editions can never sell side by side, and the
+/// edition sequence is gap-free by construction (you must hold edition `n` to open
+/// `n + 1`). Because a drop is immutable once created, `new_edition` is also the only
+/// way to change anything: a new price, a new currency, a fresh run after a sell-out
+/// or a closed window — each is simply the next edition.
 ///
-/// # Window (the only mechanic)
+/// Drop UIDs are *derived* off the shared `DropRegistry`, keyed by
+/// `DropKey(release_id, edition)`, so every edition's address is computable from its
+/// release and edition — and since claim markers outlive the objects they name, a
+/// destroyed edition's key can never be claimed again. The registry also keeps a
+/// `CurrentDropKey(release_id) → ID` pointer to the live drop (superseded drops are
+/// deleted, so the pointer — not address probing — is how clients find the current
+/// edition).
 ///
-/// A drop is **immutable** once created: its price and window are fixed. It sells
-/// only within `[start_timestamp_ms, end_timestamp_ms]` — the close is optional (`none`
-/// = evergreen, always buyable). Liveness is a pure function of the clock; there is no
-/// manual pause. To end a limited run, set a close up front; to offer more later, drop
-/// a new edition.
+/// # Records
+///
+/// Serial numbers restart at 1 each edition: a record is "edition `e`, number `n`
+/// (of `max_supply`)", and it stamps the `Currency` and the exact amount paid. A
+/// record from a destroyed edition remains verifiable — `record::is_derived_from`
+/// is pure address math and does not need the drop object alive.
 ///
 /// # Authority
 ///
-/// Creating a drop needs the release's `ReleaseAdminCap` (which carries the
-/// `release_id`). Minting is authorized separately: this package presents its
-/// `MintWitness`, whose type must be on `miso_record`'s `Settings` allowlist. A
-/// different shop with different mechanics is just another package with its own
-/// witness — same `Record`, no `miso_record` redeploy.
+/// Opening edition 0 needs the release's `ReleaseAdminCap`; opening edition `n + 1`
+/// needs the cap AND the predecessor drop. Minting is authorized separately: this
+/// package presents its `MintWitness`, whose type must be on `miso_record`'s
+/// `Settings` allowlist. A different shop with different mechanics is just another
+/// package with its own witness — same `Record`, no `miso_record` redeploy.
 module miso_drop::drop;
 
 use miso::release::{Release, ReleaseAdminCap};
@@ -51,37 +59,47 @@ use sui::balance;
 use sui::clock::Clock;
 use sui::coin::Coin;
 use sui::derived_object;
+use sui::dynamic_field as df;
 use sui::event::emit;
 
 //=== Structs ===
 
 /// Root object that all `Drop` UIDs are derived off. Shared once at publish; every
-/// `new` claims its drop off this registry keyed by `DropKey(release_id, edition)`.
+/// edition claims its drop off this registry keyed by `DropKey(release_id, edition)`,
+/// and a `CurrentDropKey(release_id)` dynamic field points at each release's live drop.
 public struct DropRegistry has key {
     id: UID,
 }
 
 /// Key for deriving a `Drop`'s UID off the `DropRegistry`: a release's `edition`
-/// run number. Scoped by `release_id` so each release owns an independent `0, 1, 2, …`
-/// edition sequence.
+/// number. Scoped by `release_id` so each release owns an independent `0, 1, 2, …`
+/// edition sequence. Claim markers persist even after a drop is destroyed, so an
+/// edition key can never be reused.
 public struct DropKey(ID, u32) has copy, drop, store;
+
+/// Dynamic-field key on the `DropRegistry` holding the `ID` of a release's live drop.
+/// Maintained by `new` / `new_edition`; needed because superseded drops are deleted,
+/// so the current edition cannot be found by probing derived addresses.
+public struct CurrentDropKey(ID) has copy, drop, store;
 
 /// Witness authorizing `miso_record` mints. Constructible only inside this package,
 /// and minted only on `buy`'s paid path — so possessing a value of it proves a valid
 /// purchase happened. `miso_record::Settings` must authorize this *type* to mint.
 public struct MintWitness has drop {}
 
-/// A primary sale of `Record`s for one edition of a release. Immutable once created.
+/// A primary sale of `Record`s for one edition of a release. Immutable once created;
+/// to change anything, open the next edition with `new_edition`.
 public struct Drop<phantom Currency> has key {
     id: UID,
     /// The release these records are copies of.
     release_id: ID,
-    /// Which edition run of the release this is (0 = first drop).
+    /// Which edition of the release this is (0 = first drop).
     edition: u32,
     /// How much a buyer must pay per record.
     price: Price,
+    /// Copies this edition may ever sell; `none` = uncapped (an open edition).
+    max_supply: Option<u64>,
     /// Records sold so far; also the most recently sold record's number.
-    /// Uncapped — a drop never runs out on quantity.
     quantity_sold: u64,
     /// Unix ms the drop opens (may be in the future — a scheduled drop). `buy`
     /// rejects purchases before it.
@@ -109,6 +127,7 @@ public struct DropCreatedEvent<phantom Currency> has copy, drop {
     edition: u32,
     price_type: vector<u8>,
     price_amount: u64,
+    max_supply: Option<u64>,
     start_timestamp_ms: u64,
     end_timestamp_ms: Option<u64>,
 }
@@ -135,9 +154,10 @@ const EDropNotStarted: u64 = 2;
 const EDropClosed: u64 = 3;
 /// The requested `[start, end]` window is empty or already in the past.
 const EInvalidWindow: u64 = 4;
-/// Editions must be created in sequence: edition `n > 0` requires edition `n - 1` to
-/// already exist for this release.
-const ENonSequentialEdition: u64 = 5;
+/// The drop has sold every one of its `max_supply` records.
+const ESoldOut: u64 = 5;
+/// A capped drop must be able to sell at least one record (`max_supply > 0`).
+const EInvalidSupply: u64 = 6;
 
 //=== Init ===
 
@@ -159,14 +179,13 @@ public fun new_floor_price(amount: u64): Price {
 
 //=== Public Functions ===
 
-/// Create and share a new `Drop` — edition `edition_hint` of `release` — selling
-/// copies at `price` within `[start_timestamp_ms, end_timestamp_ms]`, with no quantity
-/// cap. Authorized by the release's admin cap. The drop is immutable once created.
+/// Create and share a release's FIRST drop — edition `0` — selling copies at `price`
+/// within `[start_timestamp_ms, end_timestamp_ms]`, capped at `max_supply` (`none` =
+/// uncapped). Authorized by the release's admin cap. The drop is immutable once
+/// created; every later change (price, currency, a fresh run) is `new_edition`.
 ///
-/// `edition_hint` is the run number to create; it must be the next in the release's
-/// sequence — edition `n > 0` requires edition `n - 1` to already exist, and reusing an
-/// edition aborts — so editions are always gap-free. Pass `0` for a release's first
-/// drop.
+/// Edition 0's key can only ever be claimed once, so a release's edition sequence
+/// can only ever start here — calling `new` twice for the same release aborts.
 ///
 /// The window is validated against the `Clock`: a bounded `end` must be after both
 /// `start` and now (you can't create an already-closed drop). `start` may be in the
@@ -176,53 +195,60 @@ public fun new<Currency>(
     release: &Release,
     cap: &ReleaseAdminCap,
     price: Price,
-    edition_hint: u32,
+    max_supply: Option<u64>,
     start_timestamp_ms: u64,
     end_timestamp_ms: Option<u64>,
     clock: &Clock,
 ) {
     assert!(cap.release_id() == release.id(), EUnauthorized);
-    let release_id = release.id();
-
-    // Editions are gap-free: creating edition n>0 requires n-1 to already exist for
-    // this release. `derived_object::claim` below separately rejects a duplicate edition.
-    if (edition_hint > 0) {
-        assert!(
-            derived_object::exists(&registry.id, DropKey(release_id, edition_hint - 1)),
-            ENonSequentialEdition,
-        );
-    };
-
-    // A bounded window must be non-empty and not already elapsed.
-    end_timestamp_ms.do_ref!(|end| {
-        assert!(*end > start_timestamp_ms, EInvalidWindow);
-        assert!(*end > clock.timestamp_ms(), EInvalidWindow);
-    });
-
-    let id = derived_object::claim(&mut registry.id, DropKey(release_id, edition_hint));
-
-    emit(DropCreatedEvent<Currency> {
-        drop_id: id.to_inner(),
-        release_id,
-        edition: edition_hint,
-        price_type: price.type_name(),
-        price_amount: price.amount(),
-        start_timestamp_ms,
-        end_timestamp_ms,
-    });
-
-    transfer::share_object(Drop<Currency> {
-        id,
-        release_id,
-        edition: edition_hint,
+    assert_valid_terms(&max_supply, start_timestamp_ms, &end_timestamp_ms, clock);
+    share_drop<Currency>(
+        registry,
+        release.id(),
+        0,
         price,
-        quantity_sold: 0,
+        max_supply,
         start_timestamp_ms,
         end_timestamp_ms,
-    });
+    );
 }
 
-/// Buy one record from a live drop — one within its time window.
+/// Open the NEXT edition of a release's drop, CONSUMING the current one. The
+/// predecessor shared object is destroyed — so at most one drop per release is ever
+/// live, and this is the one way to change terms: a new price, a new `Currency`, a
+/// new cap or window. It may be called while the predecessor is still selling (a
+/// cutover) or after it sold out / closed (a fresh run for fans who missed it).
+///
+/// Records already sold by the predecessor are untouched and remain verifiable
+/// against its (now deleted) id. Serial numbers restart at 1 for the new edition.
+public fun new_edition<OldCurrency, NewCurrency>(
+    registry: &mut DropRegistry,
+    old: Drop<OldCurrency>,
+    cap: &ReleaseAdminCap,
+    price: Price,
+    max_supply: Option<u64>,
+    start_timestamp_ms: u64,
+    end_timestamp_ms: Option<u64>,
+    clock: &Clock,
+) {
+    assert!(cap.release_id() == old.release_id, EUnauthorized);
+    assert_valid_terms(&max_supply, start_timestamp_ms, &end_timestamp_ms, clock);
+
+    let Drop { id, release_id, edition, .. } = old;
+    id.delete();
+
+    share_drop<NewCurrency>(
+        registry,
+        release_id,
+        edition + 1,
+        price,
+        max_supply,
+        start_timestamp_ms,
+        end_timestamp_ms,
+    );
+}
+
+/// Buy one record from a live drop — one inside its time window with supply left.
 ///
 /// `payment` must satisfy the price (exactly, for `Fixed`; at least, for `Floor`). The
 /// ENTIRE payment is forwarded to the release's address — under `Floor`, anything paid
@@ -240,6 +266,7 @@ public fun buy<Currency>(
     let now = clock.timestamp_ms();
     assert!(now >= self.start_timestamp_ms, EDropNotStarted);
     self.end_timestamp_ms.do_ref!(|end| assert!(now <= *end, EDropClosed));
+    self.max_supply.do_ref!(|cap| assert!(self.quantity_sold < *cap, ESoldOut));
 
     let paid = payment.value();
     match (self.price) {
@@ -281,6 +308,66 @@ public fun buy<Currency>(
     record
 }
 
+//=== Internal ===
+
+/// Terms every edition must satisfy: a bounded window must be non-empty and not
+/// already elapsed, and a cap must allow at least one sale.
+fun assert_valid_terms(
+    max_supply: &Option<u64>,
+    start_timestamp_ms: u64,
+    end_timestamp_ms: &Option<u64>,
+    clock: &Clock,
+) {
+    max_supply.do_ref!(|cap| assert!(*cap > 0, EInvalidSupply));
+    end_timestamp_ms.do_ref!(|end| {
+        assert!(*end > start_timestamp_ms, EInvalidWindow);
+        assert!(*end > clock.timestamp_ms(), EInvalidWindow);
+    });
+}
+
+/// Claims the edition's derived UID, points the registry's `CurrentDropKey` at it,
+/// emits `DropCreatedEvent`, and shares the drop.
+fun share_drop<Currency>(
+    registry: &mut DropRegistry,
+    release_id: ID,
+    edition: u32,
+    price: Price,
+    max_supply: Option<u64>,
+    start_timestamp_ms: u64,
+    end_timestamp_ms: Option<u64>,
+) {
+    let id = derived_object::claim(&mut registry.id, DropKey(release_id, edition));
+    let drop_id = id.to_inner();
+
+    if (df::exists(&registry.id, CurrentDropKey(release_id))) {
+        *df::borrow_mut(&mut registry.id, CurrentDropKey(release_id)) = drop_id;
+    } else {
+        df::add(&mut registry.id, CurrentDropKey(release_id), drop_id);
+    };
+
+    emit(DropCreatedEvent<Currency> {
+        drop_id,
+        release_id,
+        edition,
+        price_type: price.type_name(),
+        price_amount: price.amount(),
+        max_supply,
+        start_timestamp_ms,
+        end_timestamp_ms,
+    });
+
+    transfer::share_object(Drop<Currency> {
+        id,
+        release_id,
+        edition,
+        price,
+        max_supply,
+        quantity_sold: 0,
+        start_timestamp_ms,
+        end_timestamp_ms,
+    });
+}
+
 //=== View Functions ===
 
 public fun id<Currency>(self: &Drop<Currency>): ID {
@@ -303,11 +390,23 @@ public fun price<Currency>(self: &Drop<Currency>): u64 {
     self.price.amount()
 }
 
-/// Whether `buy` would be accepted right now: inside the time window.
+/// Copies this edition may ever sell; `none` = uncapped.
+public fun max_supply<Currency>(self: &Drop<Currency>): Option<u64> {
+    self.max_supply
+}
+
+/// Whether the drop has sold every one of its `max_supply` records (always `false`
+/// for an uncapped drop).
+public fun is_sold_out<Currency>(self: &Drop<Currency>): bool {
+    self.max_supply.is_some() && self.quantity_sold >= *self.max_supply.borrow()
+}
+
+/// Whether `buy` would be accepted right now: inside the time window and not sold out.
 public fun is_live<Currency>(self: &Drop<Currency>, clock: &Clock): bool {
     let now = clock.timestamp_ms();
     now >= self.start_timestamp_ms
         && (self.end_timestamp_ms.is_none() || now <= *self.end_timestamp_ms.borrow())
+        && !self.is_sold_out()
 }
 
 public fun start_timestamp_ms<Currency>(self: &Drop<Currency>): u64 {
@@ -316,6 +415,13 @@ public fun start_timestamp_ms<Currency>(self: &Drop<Currency>): u64 {
 
 public fun end_timestamp_ms<Currency>(self: &Drop<Currency>): Option<u64> {
     self.end_timestamp_ms
+}
+
+/// The `ID` of a release's live drop, or `none` if the release has never dropped.
+/// (There is always at most one: `new_edition` destroys the predecessor.)
+public fun current_drop_id(registry: &DropRegistry, release_id: ID): Option<ID> {
+    if (!df::exists(&registry.id, CurrentDropKey(release_id))) return option::none();
+    option::some(*df::borrow(&registry.id, CurrentDropKey(release_id)))
 }
 
 /// The price amount (the fixed price, or the floor).
@@ -352,13 +458,14 @@ public fun destroy_registry_for_testing(registry: DropRegistry) {
     id.delete();
 }
 
-/// Build an unshared `Drop` for tests of `buy` (real `new` shares it and derives
-/// off the registry, which a unit test without a scenario can't retrieve).
+/// Build an unshared `Drop` for tests of `buy` / `new_edition` (real `new` shares it
+/// and derives off the registry, which a unit test without a scenario can't retrieve).
 #[test_only]
 public fun new_for_testing<Currency>(
     release_id: ID,
     edition: u32,
     price: Price,
+    max_supply: Option<u64>,
     start_timestamp_ms: u64,
     end_timestamp_ms: Option<u64>,
     ctx: &mut TxContext,
@@ -368,6 +475,7 @@ public fun new_for_testing<Currency>(
         release_id,
         edition,
         price,
+        max_supply,
         quantity_sold: 0,
         start_timestamp_ms,
         end_timestamp_ms,

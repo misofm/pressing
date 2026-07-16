@@ -15,11 +15,16 @@ use sui::sui::SUI;
 
 /// Mirrors of the module-private abort codes (constants aren't importable).
 const ENotAuthorized: u64 = 0; // miso_record::record
-const EInsufficientPayment: u64 = 1; // miso_drop::drop
+const EUnauthorized: u64 = 0; // miso_drop::drop
+const EInsufficientPayment: u64 = 1;
 const EDropNotStarted: u64 = 2;
 const EDropClosed: u64 = 3;
 const EInvalidWindow: u64 = 4;
-const ENonSequentialEdition: u64 = 5;
+const ESoldOut: u64 = 5;
+const EInvalidSupply: u64 = 6;
+
+/// A second currency, for testing a cross-currency `new_edition`.
+public struct USDX has drop {}
 
 fun id(addr: address): ID {
     object::id_from_address(addr)
@@ -51,9 +56,9 @@ fun buy_mints_sequential_records_derived_off_the_drop() {
     let (cfg, admin) = authorized_settings(&mut ctx);
     let clk = clock::create_for_testing(&mut ctx); // t = 0
 
-    // Edition 3, opens at 0, no close, free.
+    // Edition 3, opens at 0, no close, uncapped, free.
     let mut d = drop::new_for_testing<SUI>(
-        release, 3, drop::new_fixed_price(0), 0, option::none(), &mut ctx,
+        release, 3, drop::new_fixed_price(0), option::none(), 0, option::none(), &mut ctx,
     );
 
     let r1 = drop::buy(&mut d, coin::zero<SUI>(&mut ctx), &cfg, &clk, &mut ctx);
@@ -88,7 +93,7 @@ fun buy_records_amount_paid() {
 
     // Floor of 5; buyer pays 8 (a 3-over tip). purchase_price records the full 8.
     let mut d = drop::new_for_testing<SUI>(
-        id(@0xBEEF), 0, drop::new_floor_price(5), 0, option::none(), &mut ctx,
+        id(@0xBEEF), 0, drop::new_floor_price(5), option::none(), 0, option::none(), &mut ctx,
     );
     let payment = coin::mint_for_testing<SUI>(8, &mut ctx);
     let r = drop::buy(&mut d, payment, &cfg, &clk, &mut ctx);
@@ -104,9 +109,9 @@ fun buy_records_amount_paid() {
 #[test]
 fun is_live_reflects_window() {
     let mut ctx = tx_context::new_from_hint(@0xA, 0, 0, 0, 0);
-    // Window [100, 200].
+    // Window [100, 200], uncapped.
     let d = drop::new_for_testing<SUI>(
-        id(@0xBEEF), 0, drop::new_fixed_price(0), 100, option::some(200), &mut ctx,
+        id(@0xBEEF), 0, drop::new_fixed_price(0), option::none(), 100, option::some(200), &mut ctx,
     );
     let mut clk = clock::create_for_testing(&mut ctx);
 
@@ -130,7 +135,7 @@ fun buy_aborts_when_witness_not_authorized() {
     let clk = clock::create_for_testing(&mut ctx);
 
     let mut d = drop::new_for_testing<SUI>(
-        id(@0xBEEF), 0, drop::new_fixed_price(0), 0, option::none(), &mut ctx,
+        id(@0xBEEF), 0, drop::new_fixed_price(0), option::none(), 0, option::none(), &mut ctx,
     );
     let r = drop::buy(&mut d, coin::zero<SUI>(&mut ctx), &cfg, &clk, &mut ctx);
 
@@ -148,7 +153,7 @@ fun buy_aborts_on_underpayment() {
     let clk = clock::create_for_testing(&mut ctx);
 
     let mut d = drop::new_for_testing<SUI>(
-        id(@0xBEEF), 0, drop::new_fixed_price(100), 0, option::none(), &mut ctx,
+        id(@0xBEEF), 0, drop::new_fixed_price(100), option::none(), 0, option::none(), &mut ctx,
     );
     // Pay 0 against a fixed price of 100 — aborts before any funds move.
     let r = drop::buy(&mut d, coin::zero<SUI>(&mut ctx), &cfg, &clk, &mut ctx);
@@ -168,7 +173,7 @@ fun buy_aborts_before_open() {
 
     // Opens at 100; clock is at 0.
     let mut d = drop::new_for_testing<SUI>(
-        id(@0xBEEF), 0, drop::new_fixed_price(0), 100, option::none(), &mut ctx,
+        id(@0xBEEF), 0, drop::new_fixed_price(0), option::none(), 100, option::none(), &mut ctx,
     );
     let r = drop::buy(&mut d, coin::zero<SUI>(&mut ctx), &cfg, &clk, &mut ctx);
 
@@ -187,7 +192,7 @@ fun buy_aborts_after_close() {
 
     // Closes at 100; clock is at 200.
     let mut d = drop::new_for_testing<SUI>(
-        id(@0xBEEF), 0, drop::new_fixed_price(0), 0, option::some(100), &mut ctx,
+        id(@0xBEEF), 0, drop::new_fixed_price(0), option::none(), 0, option::some(100), &mut ctx,
     );
     let r = drop::buy(&mut d, coin::zero<SUI>(&mut ctx), &cfg, &clk, &mut ctx);
 
@@ -197,21 +202,161 @@ fun buy_aborts_after_close() {
     clk.destroy_for_testing();
 }
 
-//=== new: editions & window ===
+//=== max_supply ===
 
 #[test]
-fun editions_created_in_sequence() {
+fun cap_sells_out() {
+    let mut ctx = tx_context::new_from_hint(@0xA, 0, 0, 0, 0);
+    let (cfg, admin) = authorized_settings(&mut ctx);
+    let clk = clock::create_for_testing(&mut ctx);
+
+    // Capped at 2, free.
+    let mut d = drop::new_for_testing<SUI>(
+        id(@0xBEEF), 0, drop::new_fixed_price(0), option::some(2), 0, option::none(), &mut ctx,
+    );
+    assert!(!drop::is_sold_out(&d));
+
+    let r1 = drop::buy(&mut d, coin::zero<SUI>(&mut ctx), &cfg, &clk, &mut ctx);
+    assert!(!drop::is_sold_out(&d));
+    let r2 = drop::buy(&mut d, coin::zero<SUI>(&mut ctx), &cfg, &clk, &mut ctx);
+
+    // Cap reached: sold out, and no longer live even inside its window.
+    assert!(record::number(&r2) == 2);
+    assert!(drop::is_sold_out(&d));
+    assert!(!drop::is_live(&d, &clk));
+
+    record::destroy(r1);
+    record::destroy(r2);
+    drop::destroy_for_testing(d);
+    settings::destroy_for_testing(cfg, admin);
+    clk.destroy_for_testing();
+}
+
+#[test]
+#[expected_failure(abort_code = ESoldOut, location = miso_drop::drop)]
+fun buy_aborts_when_sold_out() {
+    let mut ctx = tx_context::new_from_hint(@0xA, 0, 0, 0, 0);
+    let (cfg, admin) = authorized_settings(&mut ctx);
+    let clk = clock::create_for_testing(&mut ctx);
+
+    // Capped at 1: the second buy must abort.
+    let mut d = drop::new_for_testing<SUI>(
+        id(@0xBEEF), 0, drop::new_fixed_price(0), option::some(1), 0, option::none(), &mut ctx,
+    );
+    let r1 = drop::buy(&mut d, coin::zero<SUI>(&mut ctx), &cfg, &clk, &mut ctx);
+    let r2 = drop::buy(&mut d, coin::zero<SUI>(&mut ctx), &cfg, &clk, &mut ctx);
+
+    record::destroy(r1);
+    record::destroy(r2);
+    drop::destroy_for_testing(d);
+    settings::destroy_for_testing(cfg, admin);
+    clk.destroy_for_testing();
+}
+
+#[test]
+#[expected_failure(abort_code = EInvalidSupply, location = miso_drop::drop)]
+fun zero_supply_aborts() {
     let mut ctx = tx_context::new_from_hint(@0xA, 0, 0, 0, 0);
     let mut registry = drop::new_registry_for_testing(&mut ctx);
     let (rel, cap) = a_release(&mut ctx);
     let clk = clock::create_for_testing(&mut ctx);
 
-    // Edition 0 (first drop) needs no predecessor; edition 1 then succeeds.
+    // A cap of 0 could never sell anything.
     drop::new<SUI>(
-        &mut registry, &rel, &cap, drop::new_fixed_price(0), 0, 0, option::none(), &clk,
+        &mut registry, &rel, &cap, drop::new_fixed_price(0), option::some(0), 0, option::none(), &clk,
     );
+
+    drop::destroy_registry_for_testing(registry);
+    std::unit_test::destroy(rel);
+    std::unit_test::destroy(cap);
+    clk.destroy_for_testing();
+}
+
+//=== new / new_edition ===
+
+#[test]
+fun new_then_new_edition_supersedes() {
+    let mut ctx = tx_context::new_from_hint(@0xA, 0, 0, 0, 0);
+    let mut registry = drop::new_registry_for_testing(&mut ctx);
+    let (rel, cap) = a_release(&mut ctx);
+    let (cfg, admin) = authorized_settings(&mut ctx);
+    let clk = clock::create_for_testing(&mut ctx);
+
+    // No drop yet.
+    assert!(drop::current_drop_id(&registry, rel.id()).is_none());
+
+    // Edition 0 (real path: claims DropKey(release, 0) and sets the current pointer).
     drop::new<SUI>(
-        &mut registry, &rel, &cap, drop::new_fixed_price(0), 1, 0, option::none(), &clk,
+        &mut registry, &rel, &cap, drop::new_fixed_price(0), option::none(), 0, option::none(), &clk,
+    );
+    let first = drop::current_drop_id(&registry, rel.id());
+    assert!(first.is_some());
+
+    // A stand-in for the (shared, unreachable in a unit test) edition-0 drop: same
+    // release, same edition. Sell one record from it, then supersede it.
+    let mut old = drop::new_for_testing<SUI>(
+        rel.id(), 0, drop::new_fixed_price(0), option::none(), 0, option::none(), &mut ctx,
+    );
+    let old_id = drop::id(&old);
+    let r = drop::buy(&mut old, coin::zero<SUI>(&mut ctx), &cfg, &clk, &mut ctx);
+    assert!(record::is_derived_from(&r, old_id));
+
+    // Edition 1: consumes the old drop, switches currency, caps the run.
+    drop::new_edition<SUI, USDX>(
+        &mut registry, old, &cap, drop::new_floor_price(10), option::some(500), 0, option::none(), &clk,
+    );
+
+    // The current pointer moved to the successor…
+    let second = drop::current_drop_id(&registry, rel.id());
+    assert!(second.is_some());
+    assert!(second.borrow() != first.borrow());
+
+    // …and the record sold by the (now destroyed) predecessor is still verifiable.
+    assert!(record::is_derived_from(&r, old_id));
+
+    record::destroy(r);
+    drop::destroy_registry_for_testing(registry);
+    std::unit_test::destroy(rel);
+    std::unit_test::destroy(cap);
+    settings::destroy_for_testing(cfg, admin);
+    clk.destroy_for_testing();
+}
+
+#[test]
+fun new_edition_records_restart_serials() {
+    let mut ctx = tx_context::new_from_hint(@0xA, 0, 0, 0, 0);
+    let (cfg, admin) = authorized_settings(&mut ctx);
+    let clk = clock::create_for_testing(&mut ctx);
+
+    // A successor edition mints "edition 1, #1" — serials restart per edition.
+    let mut d = drop::new_for_testing<USDX>(
+        id(@0xBEEF), 1, drop::new_fixed_price(0), option::some(500), 0, option::none(), &mut ctx,
+    );
+    let r = drop::buy(&mut d, coin::zero<USDX>(&mut ctx), &cfg, &clk, &mut ctx);
+    assert!(record::edition(&r) == 1);
+    assert!(record::number(&r) == 1);
+    assert!(record::purchase_currency(&r) == type_name::with_defining_ids<USDX>());
+
+    record::destroy(r);
+    drop::destroy_for_testing(d);
+    settings::destroy_for_testing(cfg, admin);
+    clk.destroy_for_testing();
+}
+
+#[test]
+#[expected_failure(abort_code = EUnauthorized, location = miso_drop::drop)]
+fun new_edition_aborts_with_wrong_cap() {
+    let mut ctx = tx_context::new_from_hint(@0xA, 0, 0, 0, 0);
+    let mut registry = drop::new_registry_for_testing(&mut ctx);
+    let (rel, cap) = a_release(&mut ctx);
+    let clk = clock::create_for_testing(&mut ctx);
+
+    // The old drop belongs to a DIFFERENT release than the cap authorizes.
+    let old = drop::new_for_testing<SUI>(
+        id(@0xBEEF), 0, drop::new_fixed_price(0), option::none(), 0, option::none(), &mut ctx,
+    );
+    drop::new_edition<SUI, SUI>(
+        &mut registry, old, &cap, drop::new_fixed_price(0), option::none(), 0, option::none(), &clk,
     );
 
     drop::destroy_registry_for_testing(registry);
@@ -221,38 +366,19 @@ fun editions_created_in_sequence() {
 }
 
 #[test]
-#[expected_failure(abort_code = ENonSequentialEdition, location = miso_drop::drop)]
-fun nonsequential_edition_aborts() {
-    let mut ctx = tx_context::new_from_hint(@0xA, 0, 0, 0, 0);
-    let mut registry = drop::new_registry_for_testing(&mut ctx);
-    let (rel, cap) = a_release(&mut ctx);
-    let clk = clock::create_for_testing(&mut ctx);
-
-    // Edition 1 on a fresh registry — edition 0 doesn't exist yet.
-    drop::new<SUI>(
-        &mut registry, &rel, &cap, drop::new_fixed_price(0), 1, 0, option::none(), &clk,
-    );
-
-    drop::destroy_registry_for_testing(registry);
-    std::unit_test::destroy(rel);
-    std::unit_test::destroy(cap);
-    clk.destroy_for_testing();
-}
-
-#[test]
-#[expected_failure] // derived_object::claim aborts on a duplicate DropKey
-fun duplicate_edition_aborts() {
+#[expected_failure] // derived_object::claim aborts: edition 0's key is claim-once
+fun second_first_drop_aborts() {
     let mut ctx = tx_context::new_from_hint(@0xA, 0, 0, 0, 0);
     let mut registry = drop::new_registry_for_testing(&mut ctx);
     let (rel, cap) = a_release(&mut ctx);
     let clk = clock::create_for_testing(&mut ctx);
 
     drop::new<SUI>(
-        &mut registry, &rel, &cap, drop::new_fixed_price(0), 0, 0, option::none(), &clk,
+        &mut registry, &rel, &cap, drop::new_fixed_price(0), option::none(), 0, option::none(), &clk,
     );
-    // Edition 0 again for the same release — claim collision.
+    // A release's edition sequence can only ever start once.
     drop::new<SUI>(
-        &mut registry, &rel, &cap, drop::new_fixed_price(0), 0, 0, option::none(), &clk,
+        &mut registry, &rel, &cap, drop::new_fixed_price(0), option::none(), 0, option::none(), &clk,
     );
 
     drop::destroy_registry_for_testing(registry);
@@ -271,7 +397,7 @@ fun invalid_window_aborts() {
 
     // Close (50) is not after open (100) — empty window.
     drop::new<SUI>(
-        &mut registry, &rel, &cap, drop::new_fixed_price(0), 0, 100, option::some(50), &clk,
+        &mut registry, &rel, &cap, drop::new_fixed_price(0), option::none(), 100, option::some(50), &clk,
     );
 
     drop::destroy_registry_for_testing(registry);

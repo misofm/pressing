@@ -4,24 +4,32 @@ The Miso drop — the primary sale that mints `Record`s, on Sui. "Drop your Reco
 on Miso."
 
 A `Drop<Currency>` is a shared, **immutable** primary sale for one *edition* of a
-release. It never gates *who* can buy — supply is uncapped and access is open; how rare
-a record becomes is about how its owner engages with it over time, not manufactured
-scarcity at the point of sale.
+release. Scarcity is the artist's choice per edition — a supply cap, a time window,
+both, or neither — and it's never a dead end: fans who miss a drop can always be
+answered with a new edition. What a drop never has is an access gate: while it's
+live, anyone may buy.
 
 ## Design
 
-- **Editions.** Drop UIDs are derived off a shared `DropRegistry` keyed by
-  `(release_id, edition)`, giving deterministic addressing and **gap-free** per-release
-  runs: `0, 1, 2, …` (creating edition `n` requires `n-1` to exist; duplicates abort).
+- **One live drop per release.** `new` opens edition `0`; `new_edition` opens
+  edition `n + 1` by **consuming** edition `n` (the predecessor shared object is
+  destroyed). Two editions can never sell side by side, the sequence is gap-free by
+  construction, and — since a drop is immutable — `new_edition` is the only way to
+  change anything: price, currency, cap, or window.
+- **Scarcity knobs.** `max_supply` (`none` = open edition; `some(n)` = sells out at
+  `n`) and a sale window `[start, end?]` (`end = none` = evergreen). Liveness is a
+  pure function of the clock and the count: inside the window and not sold out.
 - **Price.** `Fixed` (pay exactly) or `Floor` (pay ≥, overpayment kept as a tip). The
   whole payment forwards to the release's address; the record stores what was paid.
-- **Window (the only mechanic).** Sells within `[start, end?]`; `end` is optional
-  (`none` = evergreen, always buyable). Liveness is a pure function of the clock — no
-  manual pause. End a limited run with a close set up front; offer more with a new
-  edition.
-- **Records derive off the drop.** Each `buy` mints a `Record` whose UID is derived off
-  the `Drop`'s UID keyed by its 1-based serial number, so every copy is
-  deterministically addressable and a given number can be minted at most once.
+- **Deterministic addressing.** Drop UIDs are derived off a shared `DropRegistry`
+  keyed by `(release_id, edition)`; claim markers outlive destroyed editions, so a
+  key can never be reused. The registry also keeps `CurrentDropKey(release_id) → ID`
+  pointing at the live drop (superseded drops are deleted, so clients resolve the
+  current edition through the pointer, not address probing).
+- **Records derive off the drop.** Each `buy` mints a `Record` whose UID is derived
+  off the `Drop`'s UID keyed by its 1-based serial; serials restart each edition, so
+  a record is "edition `e`, number `n` (of `max_supply`)". Records from destroyed
+  editions stay verifiable — `record::is_derived_from` is pure address math.
 - **Minting is authorized by type.** `buy` presents this package's `MintWitness` to
   `miso_record`'s witness-gated `mint_derived`; the witness type must be on the
   `miso_record::Settings` allowlist. A different sale mechanic (auction, dutch,
@@ -32,7 +40,7 @@ scarcity at the point of sale.
 
 ```
 move/
-  sources/drop.move     miso_drop — the Drop sale, registry, and events
+  sources/drop.move     miso_drop — the Drop sale, editions, registry, and events
   tests/drop_tests.move
 ```
 
