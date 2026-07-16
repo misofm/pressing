@@ -31,13 +31,13 @@
 /// way to change anything: a new price, a new currency, a fresh run after a sell-out
 /// or a closed window — each is simply the next edition.
 ///
-/// Drop UIDs are *derived* off the shared `DropRegistry`, keyed by
-/// `DropKey(release_id, edition)`, so every edition's address is computable from its
-/// release and edition — and since claim markers outlive the objects they name, a
-/// destroyed edition's key can never be claimed again. The registry also keeps a
-/// `CurrentDropKey(release_id) → ID` pointer to the live drop (superseded drops are
-/// deleted, so the pointer — not address probing — is how clients find the current
-/// edition).
+/// The RELEASE is the parent: drop UIDs are *derived* off the release's UID (via its
+/// cap-gated `uid_mut` extension surface), keyed by `DropKey(edition)`. Every
+/// edition's address is therefore computable from the release id alone — and since
+/// claim markers outlive the objects they name, a destroyed edition's key can never
+/// be claimed again. The release's UID also carries a `CurrentDropKey → ID` dynamic
+/// field pointing at the live drop (superseded drops are deleted, so the pointer —
+/// not address probing — is how clients find the current edition).
 ///
 /// # Records
 ///
@@ -48,11 +48,12 @@
 ///
 /// # Authority
 ///
-/// Opening edition 0 needs the release's `ReleaseAdminCap`; opening edition `n + 1`
-/// needs the cap AND the predecessor drop. Minting is authorized separately: this
-/// package presents its `MintWitness`, whose type must be on `miso_record`'s
-/// `Settings` allowlist. A different shop with different mechanics is just another
-/// package with its own witness — same `Record`, no `miso_record` redeploy.
+/// Opening edition 0 needs the release's `ReleaseAdminCap` (enforced by the
+/// protocol's `release::uid_mut`); opening edition `n + 1` needs the cap AND the
+/// predecessor drop. Minting is authorized separately: this package presents its
+/// `MintWitness`, whose type must be on `miso_record`'s `Settings` allowlist. A
+/// different shop with different mechanics is just another package with its own
+/// witness — same `Record`, no `miso_record` redeploy.
 module miso_drop::drop;
 
 use miso::release::{Release, ReleaseAdminCap};
@@ -67,23 +68,16 @@ use sui::event::emit;
 
 //=== Structs ===
 
-/// Root object that all `Drop` UIDs are derived off. Shared once at publish; every
-/// edition claims its drop off this registry keyed by `DropKey(release_id, edition)`,
-/// and a `CurrentDropKey(release_id)` dynamic field points at each release's live drop.
-public struct DropRegistry has key {
-    id: UID,
-}
+/// Key for deriving a `Drop`'s UID off its RELEASE's UID: the edition number. Each
+/// release owns an independent `0, 1, 2, …` edition sequence. Claim markers persist
+/// on the release even after a drop is destroyed, so an edition key can never be
+/// reused.
+public struct DropKey(u32) has copy, drop, store;
 
-/// Key for deriving a `Drop`'s UID off the `DropRegistry`: a release's `edition`
-/// number. Scoped by `release_id` so each release owns an independent `0, 1, 2, …`
-/// edition sequence. Claim markers persist even after a drop is destroyed, so an
-/// edition key can never be reused.
-public struct DropKey(ID, u32) has copy, drop, store;
-
-/// Dynamic-field key on the `DropRegistry` holding the `ID` of a release's live drop.
+/// Dynamic-field key on the RELEASE's UID holding the `ID` of its live drop.
 /// Maintained by `new` / `new_edition`; needed because superseded drops are deleted,
 /// so the current edition cannot be found by probing derived addresses.
-public struct CurrentDropKey(ID) has copy, drop, store;
+public struct CurrentDropKey() has copy, drop, store;
 
 /// Witness authorizing `miso_record` mints. Constructible only inside this package,
 /// and minted only on `buy`'s paid path — so possessing a value of it proves a valid
@@ -158,7 +152,7 @@ public struct RecordSoldEvent<phantom Currency> has copy, drop {
 
 //=== Errors ===
 
-/// The admin capability does not authorize this drop's release.
+/// The drop being superseded does not belong to this release.
 const EUnauthorized: u64 = 0;
 /// Payment does not satisfy the drop's price.
 const EInsufficientPayment: u64 = 1;
@@ -172,12 +166,6 @@ const EInvalidWindow: u64 = 4;
 const ESoldOut: u64 = 5;
 /// A capped supply must be able to sell at least one record (`max > 0`).
 const EInvalidSupply: u64 = 6;
-
-//=== Init ===
-
-fun init(ctx: &mut TxContext) {
-    transfer::share_object(DropRegistry { id: object::new(ctx) });
-}
 
 //=== Term Constructors ===
 
@@ -219,9 +207,9 @@ public fun new_bounded_window(start_timestamp_ms: u64, end_timestamp_ms: u64): W
 //=== Public Functions ===
 
 /// Create and share a release's FIRST drop — edition `0` — selling copies on the
-/// given `price` / `supply` / `window` terms. Authorized by the release's admin cap.
-/// The drop is immutable once created; every later change (price, currency, a fresh
-/// run) is `new_edition`.
+/// given `price` / `supply` / `window` terms. Authorized by the release's admin cap
+/// (enforced by `release::uid_mut`). The drop is immutable once created; every later
+/// change (price, currency, a fresh run) is `new_edition`.
 ///
 /// Edition 0's key can only ever be claimed once, so a release's edition sequence
 /// can only ever start here — calling `new` twice for the same release aborts.
@@ -230,17 +218,16 @@ public fun new_bounded_window(start_timestamp_ms: u64, end_timestamp_ms: u64): W
 /// `new_bounded_window`); the one check left here is temporal — a bounded window
 /// must not already be elapsed against the `Clock`.
 public fun new<Currency>(
-    registry: &mut DropRegistry,
-    release: &Release,
+    release: &mut Release,
     cap: &ReleaseAdminCap,
     price: Price,
     supply: Supply,
     window: Window,
     clock: &Clock,
 ) {
-    assert!(cap.release_id() == release.id(), EUnauthorized);
     assert_window_not_elapsed(&window, clock);
-    share_drop<Currency>(registry, release.id(), 0, price, supply, window);
+    let release_id = release.id();
+    share_drop<Currency>(release.uid_mut(cap), release_id, 0, price, supply, window);
 }
 
 /// Open the NEXT edition of a release's drop, CONSUMING the current one. The
@@ -252,7 +239,7 @@ public fun new<Currency>(
 /// Records already sold by the predecessor are untouched and remain verifiable
 /// against its (now deleted) id. Serial numbers restart at 1 for the new edition.
 public fun new_edition<OldCurrency, NewCurrency>(
-    registry: &mut DropRegistry,
+    release: &mut Release,
     old: Drop<OldCurrency>,
     cap: &ReleaseAdminCap,
     price: Price,
@@ -260,13 +247,13 @@ public fun new_edition<OldCurrency, NewCurrency>(
     window: Window,
     clock: &Clock,
 ) {
-    assert!(cap.release_id() == old.release_id, EUnauthorized);
+    assert!(old.release_id == release.id(), EUnauthorized);
     assert_window_not_elapsed(&window, clock);
 
     let Drop { id, release_id, edition, .. } = old;
     id.delete();
 
-    share_drop<NewCurrency>(registry, release_id, edition + 1, price, supply, window);
+    share_drop<NewCurrency>(release.uid_mut(cap), release_id, edition + 1, price, supply, window);
 }
 
 /// Buy one record from a live drop — one inside its window with supply left.
@@ -352,23 +339,23 @@ fun assert_window_not_elapsed(window: &Window, clock: &Clock) {
     }
 }
 
-/// Claims the edition's derived UID, points the registry's `CurrentDropKey` at it,
-/// emits `DropCreatedEvent`, and shares the drop.
+/// Claims the edition's derived UID off the release's UID, points the release's
+/// `CurrentDropKey` at it, emits `DropCreatedEvent`, and shares the drop.
 fun share_drop<Currency>(
-    registry: &mut DropRegistry,
+    parent: &mut UID,
     release_id: ID,
     edition: u32,
     price: Price,
     supply: Supply,
     window: Window,
 ) {
-    let id = derived_object::claim(&mut registry.id, DropKey(release_id, edition));
+    let id = derived_object::claim(parent, DropKey(edition));
     let drop_id = id.to_inner();
 
-    if (df::exists(&registry.id, CurrentDropKey(release_id))) {
-        *df::borrow_mut(&mut registry.id, CurrentDropKey(release_id)) = drop_id;
+    if (df::exists(parent, CurrentDropKey())) {
+        *df::borrow_mut(parent, CurrentDropKey()) = drop_id;
     } else {
-        df::add(&mut registry.id, CurrentDropKey(release_id), drop_id);
+        df::add(parent, CurrentDropKey(), drop_id);
     };
 
     emit(DropCreatedEvent<Currency> { drop_id, release_id, edition, price, supply, window });
@@ -461,9 +448,9 @@ public fun is_live<Currency>(self: &Drop<Currency>, clock: &Clock): bool {
 
 /// The `ID` of a release's live drop, or `none` if the release has never dropped.
 /// (There is always at most one: `new_edition` destroys the predecessor.)
-public fun current_drop_id(registry: &DropRegistry, release_id: ID): Option<ID> {
-    if (!df::exists(&registry.id, CurrentDropKey(release_id))) return option::none();
-    option::some(*df::borrow(&registry.id, CurrentDropKey(release_id)))
+public fun current_drop_id(release: &Release): Option<ID> {
+    if (!df::exists(release.uid(), CurrentDropKey())) return option::none();
+    option::some(*df::borrow(release.uid(), CurrentDropKey()))
 }
 
 /// The price amount (the fixed price, or the floor).
@@ -476,24 +463,8 @@ public fun amount(self: &Price): u64 {
 
 //=== Test Helpers ===
 
-#[test_only]
-public fun init_for_testing(ctx: &mut TxContext) {
-    init(ctx);
-}
-
-#[test_only]
-public fun new_registry_for_testing(ctx: &mut TxContext): DropRegistry {
-    DropRegistry { id: object::new(ctx) }
-}
-
-#[test_only]
-public fun destroy_registry_for_testing(registry: DropRegistry) {
-    let DropRegistry { id } = registry;
-    id.delete();
-}
-
 /// Build an unshared `Drop` for tests of `buy` / `new_edition` (real `new` shares it
-/// and derives off the registry, which a unit test without a scenario can't retrieve).
+/// and derives off the release, which a unit test without a scenario can't retrieve).
 #[test_only]
 public fun new_for_testing<Currency>(
     release_id: ID,

@@ -22,11 +22,13 @@ live, anyone may buy.
   `Window` — `Unbounded { start }` or `Bounded { start, end }`. Liveness is a pure
   function of the clock and the count: inside the window and not sold out. The whole
   payment forwards to the release's address; the record stores what was paid.
-- **Deterministic addressing.** Drop UIDs are derived off a shared `DropRegistry`
-  keyed by `(release_id, edition)`; claim markers outlive destroyed editions, so a
-  key can never be reused. The registry also keeps `CurrentDropKey(release_id) → ID`
-  pointing at the live drop (superseded drops are deleted, so clients resolve the
-  current edition through the pointer, not address probing).
+- **The release is the parent.** Drop UIDs are derived off the release's UID (via
+  its cap-gated `uid_mut` extension surface) keyed by `DropKey(edition)`, so every
+  edition's address is computable from the release id alone; claim markers outlive
+  destroyed editions, so a key can never be reused. The release's UID also carries a
+  `CurrentDropKey → ID` dynamic field pointing at its live drop (superseded drops
+  are deleted, so clients resolve the current edition through the pointer, not
+  address probing). No registry, no package-level shared state.
 - **Records derive off the drop.** Each `buy` mints a `Record` whose UID is derived
   off the `Drop`'s UID keyed by its 1-based serial; serials restart each edition, so
   a record is "edition `e`, number `n` (of `max_supply`)". Records from destroyed
@@ -41,7 +43,7 @@ live, anyone may buy.
 
 ```
 move/
-  sources/drop.move     miso_drop — the Drop sale, editions, registry, and events
+  sources/drop.move     miso_drop — the Drop sale, editions, and events
   tests/drop_tests.move
 ```
 

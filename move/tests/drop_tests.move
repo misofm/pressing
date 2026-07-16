@@ -15,6 +15,7 @@ use sui::sui::SUI;
 
 /// Mirrors of the module-private abort codes (constants aren't importable).
 const ENotAuthorized: u64 = 0; // miso_record::record
+const EReleaseUnauthorized: u64 = 0; // miso::release (uid_mut → authorize)
 const EUnauthorized: u64 = 0; // miso_drop::drop
 const EInsufficientPayment: u64 = 1;
 const EDropNotStarted: u64 = 2;
@@ -283,18 +284,16 @@ fun empty_window_aborts_at_construction() {
 #[expected_failure(abort_code = EInvalidWindow, location = miso_drop::drop)]
 fun elapsed_window_aborts() {
     let mut ctx = tx_context::new_from_hint(@0xA, 0, 0, 0, 0);
-    let mut registry = drop::new_registry_for_testing(&mut ctx);
-    let (rel, cap) = a_release(&mut ctx);
+    let (mut rel, cap) = a_release(&mut ctx);
     let clk = clock_at(200, &mut ctx);
 
     // Structurally valid window [0, 100], but the clock is already at 200 — the
     // temporal check in `new` rejects an already-closed drop.
     drop::new<SUI>(
-        &mut registry, &rel, &cap, drop::new_fixed_price(0), drop::new_uncapped_supply(),
+        &mut rel, &cap, drop::new_fixed_price(0), drop::new_uncapped_supply(),
         drop::new_bounded_window(0, 100), &clk,
     );
 
-    drop::destroy_registry_for_testing(registry);
     std::unit_test::destroy(rel);
     std::unit_test::destroy(cap);
     clk.destroy_for_testing();
@@ -305,20 +304,19 @@ fun elapsed_window_aborts() {
 #[test]
 fun new_then_new_edition_supersedes() {
     let mut ctx = tx_context::new_from_hint(@0xA, 0, 0, 0, 0);
-    let mut registry = drop::new_registry_for_testing(&mut ctx);
-    let (rel, cap) = a_release(&mut ctx);
+    let (mut rel, cap) = a_release(&mut ctx);
     let (cfg, admin) = authorized_settings(&mut ctx);
     let clk = clock::create_for_testing(&mut ctx);
 
     // No drop yet.
-    assert!(drop::current_drop_id(&registry, rel.id()).is_none());
+    assert!(drop::current_drop_id(&rel).is_none());
 
-    // Edition 0 (real path: claims DropKey(release, 0) and sets the current pointer).
+    // Edition 0 (real path: claims DropKey(0) off the release and sets the pointer).
     drop::new<SUI>(
-        &mut registry, &rel, &cap, drop::new_fixed_price(0), drop::new_uncapped_supply(),
+        &mut rel, &cap, drop::new_fixed_price(0), drop::new_uncapped_supply(),
         drop::new_unbounded_window(0), &clk,
     );
-    let first = drop::current_drop_id(&registry, rel.id());
+    let first = drop::current_drop_id(&rel);
     assert!(first.is_some());
 
     // A stand-in for the (shared, unreachable in a unit test) edition-0 drop: same
@@ -333,12 +331,12 @@ fun new_then_new_edition_supersedes() {
 
     // Edition 1: consumes the old drop, switches currency, caps the run.
     drop::new_edition<SUI, USDX>(
-        &mut registry, old, &cap, drop::new_floor_price(10), drop::new_capped_supply(500),
+        &mut rel, old, &cap, drop::new_floor_price(10), drop::new_capped_supply(500),
         drop::new_unbounded_window(0), &clk,
     );
 
-    // The current pointer moved to the successor…
-    let second = drop::current_drop_id(&registry, rel.id());
+    // The release's pointer moved to the successor…
+    let second = drop::current_drop_id(&rel);
     assert!(second.is_some());
     assert!(second.borrow() != first.borrow());
 
@@ -346,7 +344,6 @@ fun new_then_new_edition_supersedes() {
     assert!(record::is_derived_from(&r, old_id));
 
     record::destroy(r);
-    drop::destroy_registry_for_testing(registry);
     std::unit_test::destroy(rel);
     std::unit_test::destroy(cap);
     settings::destroy_for_testing(cfg, admin);
@@ -376,24 +373,43 @@ fun new_edition_records_restart_serials() {
 }
 
 #[test]
-#[expected_failure(abort_code = EUnauthorized, location = miso_drop::drop)]
-fun new_edition_aborts_with_wrong_cap() {
+#[expected_failure(abort_code = EReleaseUnauthorized, location = miso::release)]
+fun new_aborts_with_wrong_cap() {
     let mut ctx = tx_context::new_from_hint(@0xA, 0, 0, 0, 0);
-    let mut registry = drop::new_registry_for_testing(&mut ctx);
-    let (rel, cap) = a_release(&mut ctx);
+    let (mut rel, cap) = a_release(&mut ctx);
+    let (rel2, cap2) = a_release(&mut ctx);
     let clk = clock::create_for_testing(&mut ctx);
 
-    // The old drop belongs to a DIFFERENT release than the cap authorizes.
+    // cap2 authorizes rel2, not rel — the protocol's uid_mut rejects it.
+    drop::new<SUI>(
+        &mut rel, &cap2, drop::new_fixed_price(0), drop::new_uncapped_supply(),
+        drop::new_unbounded_window(0), &clk,
+    );
+
+    std::unit_test::destroy(rel);
+    std::unit_test::destroy(cap);
+    std::unit_test::destroy(rel2);
+    std::unit_test::destroy(cap2);
+    clk.destroy_for_testing();
+}
+
+#[test]
+#[expected_failure(abort_code = EUnauthorized, location = miso_drop::drop)]
+fun new_edition_aborts_with_foreign_drop() {
+    let mut ctx = tx_context::new_from_hint(@0xA, 0, 0, 0, 0);
+    let (mut rel, cap) = a_release(&mut ctx);
+    let clk = clock::create_for_testing(&mut ctx);
+
+    // The old drop belongs to a DIFFERENT release than `rel` / its cap.
     let old = drop::new_for_testing<SUI>(
         id(@0xBEEF), 0, drop::new_fixed_price(0), drop::new_uncapped_supply(),
         drop::new_unbounded_window(0), &mut ctx,
     );
     drop::new_edition<SUI, SUI>(
-        &mut registry, old, &cap, drop::new_fixed_price(0), drop::new_uncapped_supply(),
+        &mut rel, old, &cap, drop::new_fixed_price(0), drop::new_uncapped_supply(),
         drop::new_unbounded_window(0), &clk,
     );
 
-    drop::destroy_registry_for_testing(registry);
     std::unit_test::destroy(rel);
     std::unit_test::destroy(cap);
     clk.destroy_for_testing();
@@ -403,21 +419,19 @@ fun new_edition_aborts_with_wrong_cap() {
 #[expected_failure] // derived_object::claim aborts: edition 0's key is claim-once
 fun second_first_drop_aborts() {
     let mut ctx = tx_context::new_from_hint(@0xA, 0, 0, 0, 0);
-    let mut registry = drop::new_registry_for_testing(&mut ctx);
-    let (rel, cap) = a_release(&mut ctx);
+    let (mut rel, cap) = a_release(&mut ctx);
     let clk = clock::create_for_testing(&mut ctx);
 
     drop::new<SUI>(
-        &mut registry, &rel, &cap, drop::new_fixed_price(0), drop::new_uncapped_supply(),
+        &mut rel, &cap, drop::new_fixed_price(0), drop::new_uncapped_supply(),
         drop::new_unbounded_window(0), &clk,
     );
     // A release's edition sequence can only ever start once.
     drop::new<SUI>(
-        &mut registry, &rel, &cap, drop::new_fixed_price(0), drop::new_uncapped_supply(),
+        &mut rel, &cap, drop::new_fixed_price(0), drop::new_uncapped_supply(),
         drop::new_unbounded_window(0), &clk,
     );
 
-    drop::destroy_registry_for_testing(registry);
     std::unit_test::destroy(rel);
     std::unit_test::destroy(cap);
     clk.destroy_for_testing();
