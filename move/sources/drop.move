@@ -11,12 +11,15 @@
 ///
 /// # Scarcity is the artist's choice
 ///
-/// A drop may be capped (`max_supply` — "1000 records only"), time-boxed
-/// (`end_timestamp_ms` — "two weeks only"), both, or neither (an open, evergreen
-/// sale). Scarcity here is a per-edition decision by the artist, not a protocol
-/// stance — and it is never a dead end: fans who miss a drop can always be answered
-/// with a new edition. What a drop never has is an access gate: no allowlists,
-/// auctions, or raffles — while a drop is live, anyone may buy.
+/// A drop's terms are three enums, each fixed at creation:
+/// - `Price` — `Fixed` (pay exactly) or `Floor` (pay at least; overpayment kept);
+/// - `Supply` — `Uncapped`, or `Capped { max }` ("1000 records only");
+/// - `Window` — `Unbounded { start }`, or `Bounded { start, end }` ("two weeks only").
+///
+/// Scarcity is a per-edition decision by the artist, not a protocol stance — and it
+/// is never a dead end: fans who miss a drop can always be answered with a new
+/// edition. What a drop never has is an access gate: no allowlists, auctions, or
+/// raffles — while a drop is live, anyone may buy.
 ///
 /// # Editions — one live drop per release
 ///
@@ -39,9 +42,9 @@
 /// # Records
 ///
 /// Serial numbers restart at 1 each edition: a record is "edition `e`, number `n`
-/// (of `max_supply`)", and it stamps the `Currency` and the exact amount paid. A
-/// record from a destroyed edition remains verifiable — `record::is_derived_from`
-/// is pure address math and does not need the drop object alive.
+/// (of `max`)", and it stamps the `Currency` and the exact amount paid. A record
+/// from a destroyed edition remains verifiable — `record::is_derived_from` is pure
+/// address math and does not need the drop object alive.
 ///
 /// # Authority
 ///
@@ -97,16 +100,12 @@ public struct Drop<phantom Currency> has key {
     edition: u32,
     /// How much a buyer must pay per record.
     price: Price,
-    /// Copies this edition may ever sell; `none` = uncapped (an open edition).
-    max_supply: Option<u64>,
+    /// How many records this edition may ever sell.
+    supply: Supply,
     /// Records sold so far; also the most recently sold record's number.
     quantity_sold: u64,
-    /// Unix ms the drop opens (may be in the future — a scheduled drop). `buy`
-    /// rejects purchases before it.
-    start_timestamp_ms: u64,
-    /// Unix ms the drop closes; `none` = evergreen (always buyable). `buy` rejects
-    /// purchases after it.
-    end_timestamp_ms: Option<u64>,
+    /// When this edition sells.
+    window: Window,
 }
 
 //=== Enums ===
@@ -119,17 +118,32 @@ public enum Price has copy, drop, store {
     Floor { amount: u64 },
 }
 
+/// Supply policy for a drop.
+public enum Supply has copy, drop, store {
+    /// No quantity limit — the edition never sells out.
+    Uncapped,
+    /// Sells out after `max` records.
+    Capped { max: u64 },
+}
+
+/// When a drop sells. `buy` rejects purchases outside the window.
+public enum Window has copy, drop, store {
+    /// Opens at `start_timestamp_ms` (Unix ms; may be in the future — a scheduled
+    /// drop) and never closes.
+    Unbounded { start_timestamp_ms: u64 },
+    /// Sells only within `[start_timestamp_ms, end_timestamp_ms]` (Unix ms).
+    Bounded { start_timestamp_ms: u64, end_timestamp_ms: u64 },
+}
+
 //=== Events ===
 
 public struct DropCreatedEvent<phantom Currency> has copy, drop {
     drop_id: ID,
     release_id: ID,
     edition: u32,
-    price_type: vector<u8>,
-    price_amount: u64,
-    max_supply: Option<u64>,
-    start_timestamp_ms: u64,
-    end_timestamp_ms: Option<u64>,
+    price: Price,
+    supply: Supply,
+    window: Window,
 }
 
 public struct RecordSoldEvent<phantom Currency> has copy, drop {
@@ -152,11 +166,11 @@ const EInsufficientPayment: u64 = 1;
 const EDropNotStarted: u64 = 2;
 /// The drop has closed (`now > end_timestamp_ms`).
 const EDropClosed: u64 = 3;
-/// The requested `[start, end]` window is empty or already in the past.
+/// A bounded window must be non-empty and not already elapsed.
 const EInvalidWindow: u64 = 4;
-/// The drop has sold every one of its `max_supply` records.
+/// The drop has sold every one of its `Capped { max }` records.
 const ESoldOut: u64 = 5;
-/// A capped drop must be able to sell at least one record (`max_supply > 0`).
+/// A capped supply must be able to sell at least one record (`max > 0`).
 const EInvalidSupply: u64 = 6;
 
 //=== Init ===
@@ -165,7 +179,7 @@ fun init(ctx: &mut TxContext) {
     transfer::share_object(DropRegistry { id: object::new(ctx) });
 }
 
-//=== Price Constructors ===
+//=== Term Constructors ===
 
 /// A fixed price: a buyer must pay exactly `amount`.
 public fun new_fixed_price(amount: u64): Price {
@@ -177,46 +191,62 @@ public fun new_floor_price(amount: u64): Price {
     Price::Floor { amount }
 }
 
+/// An uncapped supply: the edition never sells out.
+public fun new_uncapped_supply(): Supply {
+    Supply::Uncapped
+}
+
+/// A capped supply: the edition sells out after `max` records. `max` must be at
+/// least 1.
+public fun new_capped_supply(max: u64): Supply {
+    assert!(max > 0, EInvalidSupply);
+    Supply::Capped { max }
+}
+
+/// A window that opens at `start_timestamp_ms` (may be in the future) and never
+/// closes.
+public fun new_unbounded_window(start_timestamp_ms: u64): Window {
+    Window::Unbounded { start_timestamp_ms }
+}
+
+/// A window selling only within `[start_timestamp_ms, end_timestamp_ms]`. The close
+/// must be strictly after the open.
+public fun new_bounded_window(start_timestamp_ms: u64, end_timestamp_ms: u64): Window {
+    assert!(end_timestamp_ms > start_timestamp_ms, EInvalidWindow);
+    Window::Bounded { start_timestamp_ms, end_timestamp_ms }
+}
+
 //=== Public Functions ===
 
-/// Create and share a release's FIRST drop — edition `0` — selling copies at `price`
-/// within `[start_timestamp_ms, end_timestamp_ms]`, capped at `max_supply` (`none` =
-/// uncapped). Authorized by the release's admin cap. The drop is immutable once
-/// created; every later change (price, currency, a fresh run) is `new_edition`.
+/// Create and share a release's FIRST drop — edition `0` — selling copies on the
+/// given `price` / `supply` / `window` terms. Authorized by the release's admin cap.
+/// The drop is immutable once created; every later change (price, currency, a fresh
+/// run) is `new_edition`.
 ///
 /// Edition 0's key can only ever be claimed once, so a release's edition sequence
 /// can only ever start here — calling `new` twice for the same release aborts.
 ///
-/// The window is validated against the `Clock`: a bounded `end` must be after both
-/// `start` and now (you can't create an already-closed drop). `start` may be in the
-/// future to schedule a drop.
+/// Term validity is enforced at construction (`new_capped_supply`,
+/// `new_bounded_window`); the one check left here is temporal — a bounded window
+/// must not already be elapsed against the `Clock`.
 public fun new<Currency>(
     registry: &mut DropRegistry,
     release: &Release,
     cap: &ReleaseAdminCap,
     price: Price,
-    max_supply: Option<u64>,
-    start_timestamp_ms: u64,
-    end_timestamp_ms: Option<u64>,
+    supply: Supply,
+    window: Window,
     clock: &Clock,
 ) {
     assert!(cap.release_id() == release.id(), EUnauthorized);
-    assert_valid_terms(&max_supply, start_timestamp_ms, &end_timestamp_ms, clock);
-    share_drop<Currency>(
-        registry,
-        release.id(),
-        0,
-        price,
-        max_supply,
-        start_timestamp_ms,
-        end_timestamp_ms,
-    );
+    assert_window_not_elapsed(&window, clock);
+    share_drop<Currency>(registry, release.id(), 0, price, supply, window);
 }
 
 /// Open the NEXT edition of a release's drop, CONSUMING the current one. The
 /// predecessor shared object is destroyed — so at most one drop per release is ever
 /// live, and this is the one way to change terms: a new price, a new `Currency`, a
-/// new cap or window. It may be called while the predecessor is still selling (a
+/// new supply or window. It may be called while the predecessor is still selling (a
 /// cutover) or after it sold out / closed (a fresh run for fans who missed it).
 ///
 /// Records already sold by the predecessor are untouched and remain verifiable
@@ -226,29 +256,20 @@ public fun new_edition<OldCurrency, NewCurrency>(
     old: Drop<OldCurrency>,
     cap: &ReleaseAdminCap,
     price: Price,
-    max_supply: Option<u64>,
-    start_timestamp_ms: u64,
-    end_timestamp_ms: Option<u64>,
+    supply: Supply,
+    window: Window,
     clock: &Clock,
 ) {
     assert!(cap.release_id() == old.release_id, EUnauthorized);
-    assert_valid_terms(&max_supply, start_timestamp_ms, &end_timestamp_ms, clock);
+    assert_window_not_elapsed(&window, clock);
 
     let Drop { id, release_id, edition, .. } = old;
     id.delete();
 
-    share_drop<NewCurrency>(
-        registry,
-        release_id,
-        edition + 1,
-        price,
-        max_supply,
-        start_timestamp_ms,
-        end_timestamp_ms,
-    );
+    share_drop<NewCurrency>(registry, release_id, edition + 1, price, supply, window);
 }
 
-/// Buy one record from a live drop — one inside its time window with supply left.
+/// Buy one record from a live drop — one inside its window with supply left.
 ///
 /// `payment` must satisfy the price (exactly, for `Fixed`; at least, for `Floor`). The
 /// ENTIRE payment is forwarded to the release's address — under `Floor`, anything paid
@@ -264,9 +285,19 @@ public fun buy<Currency>(
     ctx: &mut TxContext,
 ): Record {
     let now = clock.timestamp_ms();
-    assert!(now >= self.start_timestamp_ms, EDropNotStarted);
-    self.end_timestamp_ms.do_ref!(|end| assert!(now <= *end, EDropClosed));
-    self.max_supply.do_ref!(|cap| assert!(self.quantity_sold < *cap, ESoldOut));
+    match (self.window) {
+        Window::Unbounded { start_timestamp_ms } => {
+            assert!(now >= start_timestamp_ms, EDropNotStarted);
+        },
+        Window::Bounded { start_timestamp_ms, end_timestamp_ms } => {
+            assert!(now >= start_timestamp_ms, EDropNotStarted);
+            assert!(now <= end_timestamp_ms, EDropClosed);
+        },
+    };
+    match (self.supply) {
+        Supply::Uncapped => (),
+        Supply::Capped { max } => assert!(self.quantity_sold < max, ESoldOut),
+    };
 
     let paid = payment.value();
     match (self.price) {
@@ -310,19 +341,15 @@ public fun buy<Currency>(
 
 //=== Internal ===
 
-/// Terms every edition must satisfy: a bounded window must be non-empty and not
-/// already elapsed, and a cap must allow at least one sale.
-fun assert_valid_terms(
-    max_supply: &Option<u64>,
-    start_timestamp_ms: u64,
-    end_timestamp_ms: &Option<u64>,
-    clock: &Clock,
-) {
-    max_supply.do_ref!(|cap| assert!(*cap > 0, EInvalidSupply));
-    end_timestamp_ms.do_ref!(|end| {
-        assert!(*end > start_timestamp_ms, EInvalidWindow);
-        assert!(*end > clock.timestamp_ms(), EInvalidWindow);
-    });
+/// A bounded window must not already be elapsed. (Structural validity — the close
+/// strictly after the open — is enforced at construction by `new_bounded_window`.)
+fun assert_window_not_elapsed(window: &Window, clock: &Clock) {
+    match (window) {
+        Window::Unbounded { .. } => (),
+        Window::Bounded { end_timestamp_ms, .. } => {
+            assert!(*end_timestamp_ms > clock.timestamp_ms(), EInvalidWindow);
+        },
+    }
 }
 
 /// Claims the edition's derived UID, points the registry's `CurrentDropKey` at it,
@@ -332,9 +359,8 @@ fun share_drop<Currency>(
     release_id: ID,
     edition: u32,
     price: Price,
-    max_supply: Option<u64>,
-    start_timestamp_ms: u64,
-    end_timestamp_ms: Option<u64>,
+    supply: Supply,
+    window: Window,
 ) {
     let id = derived_object::claim(&mut registry.id, DropKey(release_id, edition));
     let drop_id = id.to_inner();
@@ -345,26 +371,16 @@ fun share_drop<Currency>(
         df::add(&mut registry.id, CurrentDropKey(release_id), drop_id);
     };
 
-    emit(DropCreatedEvent<Currency> {
-        drop_id,
-        release_id,
-        edition,
-        price_type: price.type_name(),
-        price_amount: price.amount(),
-        max_supply,
-        start_timestamp_ms,
-        end_timestamp_ms,
-    });
+    emit(DropCreatedEvent<Currency> { drop_id, release_id, edition, price, supply, window });
 
     transfer::share_object(Drop<Currency> {
         id,
         release_id,
         edition,
         price,
-        max_supply,
+        supply,
         quantity_sold: 0,
-        start_timestamp_ms,
-        end_timestamp_ms,
+        window,
     });
 }
 
@@ -390,31 +406,57 @@ public fun price<Currency>(self: &Drop<Currency>): u64 {
     self.price.amount()
 }
 
-/// Copies this edition may ever sell; `none` = uncapped.
+public fun supply<Currency>(self: &Drop<Currency>): Supply {
+    self.supply
+}
+
+public fun window<Currency>(self: &Drop<Currency>): Window {
+    self.window
+}
+
+/// Flat projection of `supply`: the cap, or `none` if uncapped.
 public fun max_supply<Currency>(self: &Drop<Currency>): Option<u64> {
-    self.max_supply
+    match (self.supply) {
+        Supply::Uncapped => option::none(),
+        Supply::Capped { max } => option::some(max),
+    }
 }
 
-/// Whether the drop has sold every one of its `max_supply` records (always `false`
-/// for an uncapped drop).
+/// Flat projection of `window`: when the drop opens.
+public fun start_timestamp_ms<Currency>(self: &Drop<Currency>): u64 {
+    match (self.window) {
+        Window::Unbounded { start_timestamp_ms } => start_timestamp_ms,
+        Window::Bounded { start_timestamp_ms, .. } => start_timestamp_ms,
+    }
+}
+
+/// Flat projection of `window`: the close, or `none` if unbounded.
+public fun end_timestamp_ms<Currency>(self: &Drop<Currency>): Option<u64> {
+    match (self.window) {
+        Window::Unbounded { .. } => option::none(),
+        Window::Bounded { end_timestamp_ms, .. } => option::some(end_timestamp_ms),
+    }
+}
+
+/// Whether the drop has sold every one of its `Capped { max }` records (always
+/// `false` for an uncapped drop).
 public fun is_sold_out<Currency>(self: &Drop<Currency>): bool {
-    self.max_supply.is_some() && self.quantity_sold >= *self.max_supply.borrow()
+    match (self.supply) {
+        Supply::Uncapped => false,
+        Supply::Capped { max } => self.quantity_sold >= max,
+    }
 }
 
-/// Whether `buy` would be accepted right now: inside the time window and not sold out.
+/// Whether `buy` would be accepted right now: inside the window and not sold out.
 public fun is_live<Currency>(self: &Drop<Currency>, clock: &Clock): bool {
     let now = clock.timestamp_ms();
-    now >= self.start_timestamp_ms
-        && (self.end_timestamp_ms.is_none() || now <= *self.end_timestamp_ms.borrow())
-        && !self.is_sold_out()
-}
-
-public fun start_timestamp_ms<Currency>(self: &Drop<Currency>): u64 {
-    self.start_timestamp_ms
-}
-
-public fun end_timestamp_ms<Currency>(self: &Drop<Currency>): Option<u64> {
-    self.end_timestamp_ms
+    let in_window = match (self.window) {
+        Window::Unbounded { start_timestamp_ms } => now >= start_timestamp_ms,
+        Window::Bounded { start_timestamp_ms, end_timestamp_ms } => {
+            now >= start_timestamp_ms && now <= end_timestamp_ms
+        },
+    };
+    in_window && !self.is_sold_out()
 }
 
 /// The `ID` of a release's live drop, or `none` if the release has never dropped.
@@ -429,14 +471,6 @@ public fun amount(self: &Price): u64 {
     match (self) {
         Price::Fixed { amount } => *amount,
         Price::Floor { amount } => *amount,
-    }
-}
-
-/// A short label for the price policy: `b"Fixed"` or `b"Floor"`.
-public fun type_name(self: &Price): vector<u8> {
-    match (self) {
-        Price::Fixed { .. } => b"Fixed",
-        Price::Floor { .. } => b"Floor",
     }
 }
 
@@ -465,9 +499,8 @@ public fun new_for_testing<Currency>(
     release_id: ID,
     edition: u32,
     price: Price,
-    max_supply: Option<u64>,
-    start_timestamp_ms: u64,
-    end_timestamp_ms: Option<u64>,
+    supply: Supply,
+    window: Window,
     ctx: &mut TxContext,
 ): Drop<Currency> {
     Drop {
@@ -475,10 +508,9 @@ public fun new_for_testing<Currency>(
         release_id,
         edition,
         price,
-        max_supply,
+        supply,
         quantity_sold: 0,
-        start_timestamp_ms,
-        end_timestamp_ms,
+        window,
     }
 }
 

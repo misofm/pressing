@@ -56,9 +56,10 @@ fun buy_mints_sequential_records_derived_off_the_drop() {
     let (cfg, admin) = authorized_settings(&mut ctx);
     let clk = clock::create_for_testing(&mut ctx); // t = 0
 
-    // Edition 3, opens at 0, no close, uncapped, free.
+    // Edition 3: uncapped, opens at 0, never closes, free.
     let mut d = drop::new_for_testing<SUI>(
-        release, 3, drop::new_fixed_price(0), option::none(), 0, option::none(), &mut ctx,
+        release, 3, drop::new_fixed_price(0), drop::new_uncapped_supply(),
+        drop::new_unbounded_window(0), &mut ctx,
     );
 
     let r1 = drop::buy(&mut d, coin::zero<SUI>(&mut ctx), &cfg, &clk, &mut ctx);
@@ -93,7 +94,8 @@ fun buy_records_amount_paid() {
 
     // Floor of 5; buyer pays 8 (a 3-over tip). purchase_price records the full 8.
     let mut d = drop::new_for_testing<SUI>(
-        id(@0xBEEF), 0, drop::new_floor_price(5), option::none(), 0, option::none(), &mut ctx,
+        id(@0xBEEF), 0, drop::new_floor_price(5), drop::new_uncapped_supply(),
+        drop::new_unbounded_window(0), &mut ctx,
     );
     let payment = coin::mint_for_testing<SUI>(8, &mut ctx);
     let r = drop::buy(&mut d, payment, &cfg, &clk, &mut ctx);
@@ -109,9 +111,10 @@ fun buy_records_amount_paid() {
 #[test]
 fun is_live_reflects_window() {
     let mut ctx = tx_context::new_from_hint(@0xA, 0, 0, 0, 0);
-    // Window [100, 200], uncapped.
+    // Bounded window [100, 200], uncapped.
     let d = drop::new_for_testing<SUI>(
-        id(@0xBEEF), 0, drop::new_fixed_price(0), option::none(), 100, option::some(200), &mut ctx,
+        id(@0xBEEF), 0, drop::new_fixed_price(0), drop::new_uncapped_supply(),
+        drop::new_bounded_window(100, 200), &mut ctx,
     );
     let mut clk = clock::create_for_testing(&mut ctx);
 
@@ -135,7 +138,8 @@ fun buy_aborts_when_witness_not_authorized() {
     let clk = clock::create_for_testing(&mut ctx);
 
     let mut d = drop::new_for_testing<SUI>(
-        id(@0xBEEF), 0, drop::new_fixed_price(0), option::none(), 0, option::none(), &mut ctx,
+        id(@0xBEEF), 0, drop::new_fixed_price(0), drop::new_uncapped_supply(),
+        drop::new_unbounded_window(0), &mut ctx,
     );
     let r = drop::buy(&mut d, coin::zero<SUI>(&mut ctx), &cfg, &clk, &mut ctx);
 
@@ -153,7 +157,8 @@ fun buy_aborts_on_underpayment() {
     let clk = clock::create_for_testing(&mut ctx);
 
     let mut d = drop::new_for_testing<SUI>(
-        id(@0xBEEF), 0, drop::new_fixed_price(100), option::none(), 0, option::none(), &mut ctx,
+        id(@0xBEEF), 0, drop::new_fixed_price(100), drop::new_uncapped_supply(),
+        drop::new_unbounded_window(0), &mut ctx,
     );
     // Pay 0 against a fixed price of 100 — aborts before any funds move.
     let r = drop::buy(&mut d, coin::zero<SUI>(&mut ctx), &cfg, &clk, &mut ctx);
@@ -173,7 +178,8 @@ fun buy_aborts_before_open() {
 
     // Opens at 100; clock is at 0.
     let mut d = drop::new_for_testing<SUI>(
-        id(@0xBEEF), 0, drop::new_fixed_price(0), option::none(), 100, option::none(), &mut ctx,
+        id(@0xBEEF), 0, drop::new_fixed_price(0), drop::new_uncapped_supply(),
+        drop::new_unbounded_window(100), &mut ctx,
     );
     let r = drop::buy(&mut d, coin::zero<SUI>(&mut ctx), &cfg, &clk, &mut ctx);
 
@@ -192,7 +198,8 @@ fun buy_aborts_after_close() {
 
     // Closes at 100; clock is at 200.
     let mut d = drop::new_for_testing<SUI>(
-        id(@0xBEEF), 0, drop::new_fixed_price(0), option::none(), 0, option::some(100), &mut ctx,
+        id(@0xBEEF), 0, drop::new_fixed_price(0), drop::new_uncapped_supply(),
+        drop::new_bounded_window(0, 100), &mut ctx,
     );
     let r = drop::buy(&mut d, coin::zero<SUI>(&mut ctx), &cfg, &clk, &mut ctx);
 
@@ -202,7 +209,7 @@ fun buy_aborts_after_close() {
     clk.destroy_for_testing();
 }
 
-//=== max_supply ===
+//=== supply ===
 
 #[test]
 fun cap_sells_out() {
@@ -212,9 +219,11 @@ fun cap_sells_out() {
 
     // Capped at 2, free.
     let mut d = drop::new_for_testing<SUI>(
-        id(@0xBEEF), 0, drop::new_fixed_price(0), option::some(2), 0, option::none(), &mut ctx,
+        id(@0xBEEF), 0, drop::new_fixed_price(0), drop::new_capped_supply(2),
+        drop::new_unbounded_window(0), &mut ctx,
     );
     assert!(!drop::is_sold_out(&d));
+    assert!(drop::max_supply(&d) == option::some(2));
 
     let r1 = drop::buy(&mut d, coin::zero<SUI>(&mut ctx), &cfg, &clk, &mut ctx);
     assert!(!drop::is_sold_out(&d));
@@ -241,7 +250,8 @@ fun buy_aborts_when_sold_out() {
 
     // Capped at 1: the second buy must abort.
     let mut d = drop::new_for_testing<SUI>(
-        id(@0xBEEF), 0, drop::new_fixed_price(0), option::some(1), 0, option::none(), &mut ctx,
+        id(@0xBEEF), 0, drop::new_fixed_price(0), drop::new_capped_supply(1),
+        drop::new_unbounded_window(0), &mut ctx,
     );
     let r1 = drop::buy(&mut d, coin::zero<SUI>(&mut ctx), &cfg, &clk, &mut ctx);
     let r2 = drop::buy(&mut d, coin::zero<SUI>(&mut ctx), &cfg, &clk, &mut ctx);
@@ -253,17 +263,35 @@ fun buy_aborts_when_sold_out() {
     clk.destroy_for_testing();
 }
 
+//=== term constructors ===
+
 #[test]
 #[expected_failure(abort_code = EInvalidSupply, location = miso_drop::drop)]
-fun zero_supply_aborts() {
+fun zero_cap_aborts_at_construction() {
+    // A cap of 0 could never sell anything.
+    let _supply = drop::new_capped_supply(0);
+}
+
+#[test]
+#[expected_failure(abort_code = EInvalidWindow, location = miso_drop::drop)]
+fun empty_window_aborts_at_construction() {
+    // Close (50) is not after open (100) — empty window.
+    let _window = drop::new_bounded_window(100, 50);
+}
+
+#[test]
+#[expected_failure(abort_code = EInvalidWindow, location = miso_drop::drop)]
+fun elapsed_window_aborts() {
     let mut ctx = tx_context::new_from_hint(@0xA, 0, 0, 0, 0);
     let mut registry = drop::new_registry_for_testing(&mut ctx);
     let (rel, cap) = a_release(&mut ctx);
-    let clk = clock::create_for_testing(&mut ctx);
+    let clk = clock_at(200, &mut ctx);
 
-    // A cap of 0 could never sell anything.
+    // Structurally valid window [0, 100], but the clock is already at 200 — the
+    // temporal check in `new` rejects an already-closed drop.
     drop::new<SUI>(
-        &mut registry, &rel, &cap, drop::new_fixed_price(0), option::some(0), 0, option::none(), &clk,
+        &mut registry, &rel, &cap, drop::new_fixed_price(0), drop::new_uncapped_supply(),
+        drop::new_bounded_window(0, 100), &clk,
     );
 
     drop::destroy_registry_for_testing(registry);
@@ -287,7 +315,8 @@ fun new_then_new_edition_supersedes() {
 
     // Edition 0 (real path: claims DropKey(release, 0) and sets the current pointer).
     drop::new<SUI>(
-        &mut registry, &rel, &cap, drop::new_fixed_price(0), option::none(), 0, option::none(), &clk,
+        &mut registry, &rel, &cap, drop::new_fixed_price(0), drop::new_uncapped_supply(),
+        drop::new_unbounded_window(0), &clk,
     );
     let first = drop::current_drop_id(&registry, rel.id());
     assert!(first.is_some());
@@ -295,7 +324,8 @@ fun new_then_new_edition_supersedes() {
     // A stand-in for the (shared, unreachable in a unit test) edition-0 drop: same
     // release, same edition. Sell one record from it, then supersede it.
     let mut old = drop::new_for_testing<SUI>(
-        rel.id(), 0, drop::new_fixed_price(0), option::none(), 0, option::none(), &mut ctx,
+        rel.id(), 0, drop::new_fixed_price(0), drop::new_uncapped_supply(),
+        drop::new_unbounded_window(0), &mut ctx,
     );
     let old_id = drop::id(&old);
     let r = drop::buy(&mut old, coin::zero<SUI>(&mut ctx), &cfg, &clk, &mut ctx);
@@ -303,7 +333,8 @@ fun new_then_new_edition_supersedes() {
 
     // Edition 1: consumes the old drop, switches currency, caps the run.
     drop::new_edition<SUI, USDX>(
-        &mut registry, old, &cap, drop::new_floor_price(10), option::some(500), 0, option::none(), &clk,
+        &mut registry, old, &cap, drop::new_floor_price(10), drop::new_capped_supply(500),
+        drop::new_unbounded_window(0), &clk,
     );
 
     // The current pointer moved to the successor…
@@ -330,7 +361,8 @@ fun new_edition_records_restart_serials() {
 
     // A successor edition mints "edition 1, #1" — serials restart per edition.
     let mut d = drop::new_for_testing<USDX>(
-        id(@0xBEEF), 1, drop::new_fixed_price(0), option::some(500), 0, option::none(), &mut ctx,
+        id(@0xBEEF), 1, drop::new_fixed_price(0), drop::new_capped_supply(500),
+        drop::new_unbounded_window(0), &mut ctx,
     );
     let r = drop::buy(&mut d, coin::zero<USDX>(&mut ctx), &cfg, &clk, &mut ctx);
     assert!(record::edition(&r) == 1);
@@ -353,10 +385,12 @@ fun new_edition_aborts_with_wrong_cap() {
 
     // The old drop belongs to a DIFFERENT release than the cap authorizes.
     let old = drop::new_for_testing<SUI>(
-        id(@0xBEEF), 0, drop::new_fixed_price(0), option::none(), 0, option::none(), &mut ctx,
+        id(@0xBEEF), 0, drop::new_fixed_price(0), drop::new_uncapped_supply(),
+        drop::new_unbounded_window(0), &mut ctx,
     );
     drop::new_edition<SUI, SUI>(
-        &mut registry, old, &cap, drop::new_fixed_price(0), option::none(), 0, option::none(), &clk,
+        &mut registry, old, &cap, drop::new_fixed_price(0), drop::new_uncapped_supply(),
+        drop::new_unbounded_window(0), &clk,
     );
 
     drop::destroy_registry_for_testing(registry);
@@ -374,30 +408,13 @@ fun second_first_drop_aborts() {
     let clk = clock::create_for_testing(&mut ctx);
 
     drop::new<SUI>(
-        &mut registry, &rel, &cap, drop::new_fixed_price(0), option::none(), 0, option::none(), &clk,
+        &mut registry, &rel, &cap, drop::new_fixed_price(0), drop::new_uncapped_supply(),
+        drop::new_unbounded_window(0), &clk,
     );
     // A release's edition sequence can only ever start once.
     drop::new<SUI>(
-        &mut registry, &rel, &cap, drop::new_fixed_price(0), option::none(), 0, option::none(), &clk,
-    );
-
-    drop::destroy_registry_for_testing(registry);
-    std::unit_test::destroy(rel);
-    std::unit_test::destroy(cap);
-    clk.destroy_for_testing();
-}
-
-#[test]
-#[expected_failure(abort_code = EInvalidWindow, location = miso_drop::drop)]
-fun invalid_window_aborts() {
-    let mut ctx = tx_context::new_from_hint(@0xA, 0, 0, 0, 0);
-    let mut registry = drop::new_registry_for_testing(&mut ctx);
-    let (rel, cap) = a_release(&mut ctx);
-    let clk = clock::create_for_testing(&mut ctx);
-
-    // Close (50) is not after open (100) — empty window.
-    drop::new<SUI>(
-        &mut registry, &rel, &cap, drop::new_fixed_price(0), option::none(), 100, option::some(50), &clk,
+        &mut registry, &rel, &cap, drop::new_fixed_price(0), drop::new_uncapped_supply(),
+        drop::new_unbounded_window(0), &clk,
     );
 
     drop::destroy_registry_for_testing(registry);

@@ -16,11 +16,12 @@ live, anyone may buy.
   destroyed). Two editions can never sell side by side, the sequence is gap-free by
   construction, and — since a drop is immutable — `new_edition` is the only way to
   change anything: price, currency, cap, or window.
-- **Scarcity knobs.** `max_supply` (`none` = open edition; `some(n)` = sells out at
-  `n`) and a sale window `[start, end?]` (`end = none` = evergreen). Liveness is a
-  pure function of the clock and the count: inside the window and not sold out.
-- **Price.** `Fixed` (pay exactly) or `Floor` (pay ≥, overpayment kept as a tip). The
-  whole payment forwards to the release's address; the record stores what was paid.
+- **Terms are three enums**, each immutable per edition and validated at
+  construction: `Price` — `Fixed { amount }` (pay exactly) or `Floor { amount }`
+  (pay ≥, overpayment kept as a tip); `Supply` — `Uncapped` or `Capped { max }`;
+  `Window` — `Unbounded { start }` or `Bounded { start, end }`. Liveness is a pure
+  function of the clock and the count: inside the window and not sold out. The whole
+  payment forwards to the release's address; the record stores what was paid.
 - **Deterministic addressing.** Drop UIDs are derived off a shared `DropRegistry`
   keyed by `(release_id, edition)`; claim markers outlive destroyed editions, so a
   key can never be reused. The registry also keeps `CurrentDropKey(release_id) → ID`
