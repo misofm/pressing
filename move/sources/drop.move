@@ -166,6 +166,10 @@ const EInvalidWindow: u64 = 4;
 const ESoldOut: u64 = 5;
 /// A capped supply must be able to sell at least one record (`max > 0`).
 const EInvalidSupply: u64 = 6;
+/// Editions must be claimed in sequence: edition `n > 0` requires edition `n - 1`'s
+/// key to have been claimed. Unreachable through the public API (`new` is edition 0;
+/// `new_edition` consumes the predecessor) — a claim-site guard for the invariant.
+const ENonSequentialEdition: u64 = 7;
 
 //=== Term Constructors ===
 
@@ -341,6 +345,11 @@ fun assert_window_not_elapsed(window: &Window, clock: &Clock) {
 
 /// Claims the edition's derived UID off the release's UID, points the release's
 /// `CurrentDropKey` at it, emits `DropCreatedEvent`, and shares the drop.
+///
+/// Sequentiality is asserted HERE, at the claim site: edition `n > 0` requires
+/// edition `n - 1`'s claim marker (markers persist even after a drop is destroyed).
+/// Together with claim-once, a release's claimed editions always form a gap-free
+/// prefix `0..k` — independent of what callers exist above.
 fun share_drop<Currency>(
     parent: &mut UID,
     release_id: ID,
@@ -349,6 +358,9 @@ fun share_drop<Currency>(
     supply: Supply,
     window: Window,
 ) {
+    if (edition > 0) {
+        assert!(derived_object::exists(parent, DropKey(edition - 1)), ENonSequentialEdition);
+    };
     let id = derived_object::claim(parent, DropKey(edition));
     let drop_id = id.to_inner();
 
@@ -489,4 +501,19 @@ public fun new_for_testing<Currency>(
 public fun destroy_for_testing<Currency>(self: Drop<Currency>) {
     let Drop { id, .. } = self;
     id.delete();
+}
+
+/// Exercise `share_drop` with an arbitrary edition — the sequentiality guard is
+/// unreachable through the public API, so tests need a direct path to prove it fires.
+#[test_only]
+public fun share_drop_for_testing<Currency>(
+    release: &mut Release,
+    cap: &ReleaseAdminCap,
+    edition: u32,
+    price: Price,
+    supply: Supply,
+    window: Window,
+) {
+    let release_id = release.id();
+    share_drop<Currency>(release.uid_mut(cap), release_id, edition, price, supply, window);
 }

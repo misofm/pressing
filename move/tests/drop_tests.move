@@ -23,6 +23,7 @@ const EDropClosed: u64 = 3;
 const EInvalidWindow: u64 = 4;
 const ESoldOut: u64 = 5;
 const EInvalidSupply: u64 = 6;
+const ENonSequentialEdition: u64 = 7;
 
 /// A second currency, for testing a cross-currency `new_edition`.
 public struct USDX has drop {}
@@ -413,6 +414,23 @@ fun new_edition_aborts_with_foreign_drop() {
     std::unit_test::destroy(rel);
     std::unit_test::destroy(cap);
     clk.destroy_for_testing();
+}
+
+#[test]
+#[expected_failure(abort_code = ENonSequentialEdition, location = miso_drop::drop)]
+fun nonsequential_claim_aborts() {
+    let mut ctx = tx_context::new_from_hint(@0xA, 0, 0, 0, 0);
+    let (mut rel, cap) = a_release(&mut ctx);
+
+    // Edition 1 on a release that never claimed edition 0 — the claim-site guard
+    // fires (unreachable through the public API; exercised via the test-only path).
+    drop::share_drop_for_testing<SUI>(
+        &mut rel, &cap, 1, drop::new_fixed_price(0), drop::new_uncapped_supply(),
+        drop::new_unbounded_window(0),
+    );
+
+    std::unit_test::destroy(rel);
+    std::unit_test::destroy(cap);
 }
 
 #[test]
