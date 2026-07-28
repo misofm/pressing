@@ -4,6 +4,48 @@
 [move]
 version = 4
 
+[pinned.mainnet.MoveStdlib]
+source = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/move-stdlib", rev = "b9149cbf0b2cb9ae5ed830407a9b48c7ae3fd36c" }
+use_environment = "mainnet"
+manifest_digest = "C4FE4C91DE74CBF223B2E380AE40F592177D21870DC2D7EB6227D2D694E05363"
+deps = {}
+
+[pinned.mainnet.Sui]
+source = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "b9149cbf0b2cb9ae5ed830407a9b48c7ae3fd36c" }
+use_environment = "mainnet"
+manifest_digest = "CD547CB1ACCE0880C835DAED2D8FFCB91D56C833AE5240D3AA5B918398263195"
+deps = { MoveStdlib = "MoveStdlib" }
+
+[pinned.mainnet.bps]
+source = { git = "https://github.com/unconfirmedlabs/bps.git", subdir = ".", rev = "d1c07015b98c407e556d014eaa1f4991bd081372" }
+use_environment = "mainnet"
+manifest_digest = "E41BBD67BE8940D26C79D78B028477EF5B33BA217A1282C78ACB344CF8A5ECF6"
+deps = { std = "MoveStdlib", sui = "Sui" }
+
+[pinned.mainnet.miso]
+source = { local = "../../miso-protocol/move" }
+use_environment = "mainnet"
+manifest_digest = "EE9FBC46930F97AA9AB1533D0A9154C0828AE0F779AB7E1D9347C98D6913B87B"
+deps = { bps = "bps", miso_share = "miso_share", std = "MoveStdlib", sui = "Sui" }
+
+[pinned.mainnet.miso_drop]
+source = { root = true }
+use_environment = "mainnet"
+manifest_digest = "3CB6AD15BD9234A2316FDCF7B9DCD7AFDDB8AFD14DB7FFD99A057959A005C788"
+deps = { miso = "miso", miso_record = "miso_record", std = "MoveStdlib", sui = "Sui" }
+
+[pinned.mainnet.miso_record]
+source = { local = "../../miso-record/move" }
+use_environment = "mainnet"
+manifest_digest = "9242048211FEEC8A8FD66137E0B03055C0EFD4A725E68FD059589B05C5666E26"
+deps = { miso = "miso", std = "MoveStdlib", sui = "Sui" }
+
+[pinned.mainnet.miso_share]
+source = { local = "../../miso-protocol/move/lib/share" }
+use_environment = "mainnet"
+manifest_digest = "E41BBD67BE8940D26C79D78B028477EF5B33BA217A1282C78ACB344CF8A5ECF6"
+deps = { std = "MoveStdlib", sui = "Sui" }
+
 [pinned.testnet.MoveStdlib]
 source = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/move-stdlib", rev = "b9149cbf0b2cb9ae5ed830407a9b48c7ae3fd36c" }
 use_environment = "testnet"
