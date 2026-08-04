@@ -1,0 +1,1652 @@
+{
+  "id": {
+    "address": "miso_pressing",
+    "name": "listing"
+  },
+  "doc": " One currency's offer on a pressing — a *Listing*.\n\n A listing answers exactly two questions: **what does it cost** and **can you pay\n in this currency**. Everything about *what you get* — the run, the number —\n belongs to the `Pressing`. So a pressing sold in SUI and in USDC has two listings,\n each with its own price and switch, both drawing on the same number sequence.\n\n A listing's UID is derived off its pressing's UID at `ListingKey<Currency>()`, so\n there is exactly one listing per (pressing, currency) — ever — and its address is\n computable from the pressing's alone. The key is *phantom-typed* rather than a\n stored `TypeName`, which makes the currency part of the key's type: distinct\n currencies are distinct key types, so `derived_object::claim` enforces\n once-per-currency by itself and the pressing needs no set of currencies to check\n against. Listings are **permanent**: never destroyed, never replaced. The offer\n changes *in place* — repriced, disabled, re-enabled — and the listing keeps its\n identity through every change.\n\n # Price\n\n `Fixed` (pay exactly) or `Floor` (pay at least; overpayment is kept as a tip, not\n refunded). The whole payment forwards to the release's address. Settable with the\n `PressingAdminCap` (`set_price`) — repricing is an edit, not a teardown — and a\n change cannot catch a buyer out: a `Fixed` buyer pays *exactly*, so a stale\n payment aborts against a new price, and a `Floor` buyer never pays more than the\n coin they sent.\n\n # Two switches\n\n A listing is `Enabled` or `Disabled`; a disabled listing takes no payment in its\n currency, while the pressing's other currencies carry on. Above it, the pressing's\n own `Active | Paused` stops every currency at once (`pressing::mint_next`). A sale\n needs both open. Both are primary facts — decisions, derivable from nothing on\n chain — which is exactly the kind of state that belongs in storage.\n\n There is no schedule and no expiry. An uncapped, permanent listing has nothing to\n count down to, and a time-limited sale is scarcity theater this design rejects; an\n artist opening or ending a campaign flips the switch.\n\n # The certificate\n\n What the buyer paid is not part of the record — it is a fact about the *sale* — so\n it rides out on the record's `Certificate`, stamped by `pressing::mint_next`\n alongside the number. One field, written once, in the transaction that pressed the\n record.",
+  "immediate_dependencies": [
+    {
+      "address": "miso_pressing",
+      "name": "pressing"
+    },
+    {
+      "address": "miso_record",
+      "name": "record"
+    },
+    {
+      "address": "miso_record",
+      "name": "settings"
+    },
+    {
+      "address": "sui",
+      "name": "balance"
+    },
+    {
+      "address": "sui",
+      "name": "clock"
+    },
+    {
+      "address": "sui",
+      "name": "coin"
+    },
+    {
+      "address": "sui",
+      "name": "derived_object"
+    },
+    {
+      "address": "sui",
+      "name": "event"
+    },
+    {
+      "address": "sui",
+      "name": "object"
+    },
+    {
+      "address": "sui",
+      "name": "transfer"
+    },
+    {
+      "address": "sui",
+      "name": "tx_context"
+    }
+  ],
+  "attributes": [],
+  "functions": {
+    "new_fixed_price": {
+      "source_index": 0,
+      "index": 0,
+      "doc": " A fixed price: a buyer must pay exactly `amount`.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "amount",
+          "type_": "u64"
+        }
+      ],
+      "return_": [
+        {
+          "Datatype": {
+            "module": {
+              "address": "miso_pressing",
+              "name": "listing"
+            },
+            "name": "Price",
+            "type_arguments": []
+          }
+        }
+      ]
+    },
+    "new_floor_price": {
+      "source_index": 1,
+      "index": 1,
+      "doc": " A floor price: a buyer must pay at least `amount`; overpayment is kept.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "amount",
+          "type_": "u64"
+        }
+      ],
+      "return_": [
+        {
+          "Datatype": {
+            "module": {
+              "address": "miso_pressing",
+              "name": "listing"
+            },
+            "name": "Price",
+            "type_arguments": []
+          }
+        }
+      ]
+    },
+    "new_enabled_state": {
+      "source_index": 2,
+      "index": 2,
+      "doc": " The enabled state: this currency is accepted.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [],
+      "return_": [
+        {
+          "Datatype": {
+            "module": {
+              "address": "miso_pressing",
+              "name": "listing"
+            },
+            "name": "ListingState",
+            "type_arguments": []
+          }
+        }
+      ]
+    },
+    "new_disabled_state": {
+      "source_index": 3,
+      "index": 3,
+      "doc": " The disabled state: this currency is not accepted.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [],
+      "return_": [
+        {
+          "Datatype": {
+            "module": {
+              "address": "miso_pressing",
+              "name": "listing"
+            },
+            "name": "ListingState",
+            "type_arguments": []
+          }
+        }
+      ]
+    },
+    "new": {
+      "source_index": 4,
+      "index": 4,
+      "doc": " List the pressing for sale in `Currency` at the given price and state, and share\n it.\n\n Exactly one listing per (pressing, currency), ever: the slot is a derived-object\n claim on the pressing at `ListingKey<Currency>()`, and listings are never\n destroyed — so a second call for the same currency aborts in the claim. Every\n later change to this currency's offer is an edit to this object, not a\n replacement of it.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [
+        {
+          "name": "Currency",
+          "constraints": []
+        }
+      ],
+      "parameters": [
+        {
+          "name": "pressing",
+          "type_": {
+            "Reference": [
+              true,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso_pressing",
+                    "name": "pressing"
+                  },
+                  "name": "Pressing",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "cap",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso_pressing",
+                    "name": "pressing"
+                  },
+                  "name": "PressingAdminCap",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "price",
+          "type_": {
+            "Datatype": {
+              "module": {
+                "address": "miso_pressing",
+                "name": "listing"
+              },
+              "name": "Price",
+              "type_arguments": []
+            }
+          }
+        },
+        {
+          "name": "state",
+          "type_": {
+            "Datatype": {
+              "module": {
+                "address": "miso_pressing",
+                "name": "listing"
+              },
+              "name": "ListingState",
+              "type_arguments": []
+            }
+          }
+        }
+      ],
+      "return_": []
+    },
+    "buy": {
+      "source_index": 5,
+      "index": 5,
+      "doc": " Buy one record: pay this listing's price, take the next number out of the pressing.\n\n `payment` must satisfy the price (exactly, for `Fixed`; at least, for `Floor`).\n The ENTIRE payment forwards to the release's address — under `Floor`, anything\n above the floor is kept as a tip, not refunded. The record's number is the\n pressing's next 1-based value, shared with every other currency selling the same\n run, and its UID is derived off the pressing. The sale's terms ride out on the\n record's `Certificate`. `settings` must authorize this package's `MintWitness`.\n\n Both switches must be open: this listing `Enabled`, checked here, and the pressing\n `Active`, checked in `pressing::mint_next`.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [
+        {
+          "name": "Currency",
+          "constraints": []
+        }
+      ],
+      "parameters": [
+        {
+          "name": "self",
+          "type_": {
+            "Reference": [
+              true,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso_pressing",
+                    "name": "listing"
+                  },
+                  "name": "Listing",
+                  "type_arguments": [
+                    {
+                      "phantom": true,
+                      "argument": {
+                        "NamedTypeParameter": "Currency"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "pressing",
+          "type_": {
+            "Reference": [
+              true,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso_pressing",
+                    "name": "pressing"
+                  },
+                  "name": "Pressing",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "payment",
+          "type_": {
+            "Datatype": {
+              "module": {
+                "address": "sui",
+                "name": "coin"
+              },
+              "name": "Coin",
+              "type_arguments": [
+                {
+                  "phantom": true,
+                  "argument": {
+                    "NamedTypeParameter": "Currency"
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "settings",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso_record",
+                    "name": "settings"
+                  },
+                  "name": "Settings",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "clock",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "sui",
+                    "name": "clock"
+                  },
+                  "name": "Clock",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "ctx",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "sui",
+                    "name": "tx_context"
+                  },
+                  "name": "TxContext",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        {
+          "Datatype": {
+            "module": {
+              "address": "miso_record",
+              "name": "record"
+            },
+            "name": "Record",
+            "type_arguments": []
+          }
+        }
+      ]
+    },
+    "set_state": {
+      "source_index": 6,
+      "index": 6,
+      "doc": " Enable or disable this currency. Leaves every other currency untouched; to stop\n the whole run at once, pause the pressing (`pressing::set_state`).",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [
+        {
+          "name": "Currency",
+          "constraints": []
+        }
+      ],
+      "parameters": [
+        {
+          "name": "self",
+          "type_": {
+            "Reference": [
+              true,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso_pressing",
+                    "name": "listing"
+                  },
+                  "name": "Listing",
+                  "type_arguments": [
+                    {
+                      "phantom": true,
+                      "argument": {
+                        "NamedTypeParameter": "Currency"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "cap",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso_pressing",
+                    "name": "pressing"
+                  },
+                  "name": "PressingAdminCap",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "state",
+          "type_": {
+            "Datatype": {
+              "module": {
+                "address": "miso_pressing",
+                "name": "listing"
+              },
+              "name": "ListingState",
+              "type_arguments": []
+            }
+          }
+        }
+      ],
+      "return_": []
+    },
+    "set_price": {
+      "source_index": 7,
+      "index": 7,
+      "doc": " Reprice the listing in place. Safe against in-flight buys by construction: a\n `Fixed` buyer pays exactly, so a stale payment aborts against the new price, and a\n `Floor` buyer never pays more than the coin they sent.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [
+        {
+          "name": "Currency",
+          "constraints": []
+        }
+      ],
+      "parameters": [
+        {
+          "name": "self",
+          "type_": {
+            "Reference": [
+              true,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso_pressing",
+                    "name": "listing"
+                  },
+                  "name": "Listing",
+                  "type_arguments": [
+                    {
+                      "phantom": true,
+                      "argument": {
+                        "NamedTypeParameter": "Currency"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "cap",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso_pressing",
+                    "name": "pressing"
+                  },
+                  "name": "PressingAdminCap",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "price",
+          "type_": {
+            "Datatype": {
+              "module": {
+                "address": "miso_pressing",
+                "name": "listing"
+              },
+              "name": "Price",
+              "type_arguments": []
+            }
+          }
+        }
+      ],
+      "return_": []
+    },
+    "authorize": {
+      "source_index": 8,
+      "index": 8,
+      "doc": " Abort unless `cap` controls this listing's pressing.",
+      "attributes": [],
+      "visibility": "Private",
+      "entry": false,
+      "type_parameters": [
+        {
+          "name": "Currency",
+          "constraints": []
+        }
+      ],
+      "parameters": [
+        {
+          "name": "self",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso_pressing",
+                    "name": "listing"
+                  },
+                  "name": "Listing",
+                  "type_arguments": [
+                    {
+                      "phantom": true,
+                      "argument": {
+                        "NamedTypeParameter": "Currency"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "cap",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso_pressing",
+                    "name": "pressing"
+                  },
+                  "name": "PressingAdminCap",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": []
+    },
+    "derive_id": {
+      "source_index": 9,
+      "index": 9,
+      "doc": " The address `Currency`'s listing on `pressing_id` occupies — pure address math,\n computable before the listing exists.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [
+        {
+          "name": "Currency",
+          "constraints": []
+        }
+      ],
+      "parameters": [
+        {
+          "name": "pressing_id",
+          "type_": {
+            "Datatype": {
+              "module": {
+                "address": "sui",
+                "name": "object"
+              },
+              "name": "ID",
+              "type_arguments": []
+            }
+          }
+        }
+      ],
+      "return_": [
+        {
+          "Datatype": {
+            "module": {
+              "address": "sui",
+              "name": "object"
+            },
+            "name": "ID",
+            "type_arguments": []
+          }
+        }
+      ]
+    },
+    "has_listing": {
+      "source_index": 10,
+      "index": 10,
+      "doc": " Whether `pressing` has a listing in `Currency` yet. Reads the derived slot\n directly, so the pressing stores no set of currencies; to enumerate every listing,\n index `ListingOpenedEvent<Currency>`.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [
+        {
+          "name": "Currency",
+          "constraints": []
+        }
+      ],
+      "parameters": [
+        {
+          "name": "pressing",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso_pressing",
+                    "name": "pressing"
+                  },
+                  "name": "Pressing",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        "bool"
+      ]
+    },
+    "id": {
+      "source_index": 11,
+      "index": 11,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [
+        {
+          "name": "Currency",
+          "constraints": []
+        }
+      ],
+      "parameters": [
+        {
+          "name": "self",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso_pressing",
+                    "name": "listing"
+                  },
+                  "name": "Listing",
+                  "type_arguments": [
+                    {
+                      "phantom": true,
+                      "argument": {
+                        "NamedTypeParameter": "Currency"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        {
+          "Datatype": {
+            "module": {
+              "address": "sui",
+              "name": "object"
+            },
+            "name": "ID",
+            "type_arguments": []
+          }
+        }
+      ]
+    },
+    "release_id": {
+      "source_index": 12,
+      "index": 12,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [
+        {
+          "name": "Currency",
+          "constraints": []
+        }
+      ],
+      "parameters": [
+        {
+          "name": "self",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso_pressing",
+                    "name": "listing"
+                  },
+                  "name": "Listing",
+                  "type_arguments": [
+                    {
+                      "phantom": true,
+                      "argument": {
+                        "NamedTypeParameter": "Currency"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        {
+          "Datatype": {
+            "module": {
+              "address": "sui",
+              "name": "object"
+            },
+            "name": "ID",
+            "type_arguments": []
+          }
+        }
+      ]
+    },
+    "pressing_id": {
+      "source_index": 13,
+      "index": 13,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [
+        {
+          "name": "Currency",
+          "constraints": []
+        }
+      ],
+      "parameters": [
+        {
+          "name": "self",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso_pressing",
+                    "name": "listing"
+                  },
+                  "name": "Listing",
+                  "type_arguments": [
+                    {
+                      "phantom": true,
+                      "argument": {
+                        "NamedTypeParameter": "Currency"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        {
+          "Datatype": {
+            "module": {
+              "address": "sui",
+              "name": "object"
+            },
+            "name": "ID",
+            "type_arguments": []
+          }
+        }
+      ]
+    },
+    "price": {
+      "source_index": 14,
+      "index": 14,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [
+        {
+          "name": "Currency",
+          "constraints": []
+        }
+      ],
+      "parameters": [
+        {
+          "name": "self",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso_pressing",
+                    "name": "listing"
+                  },
+                  "name": "Listing",
+                  "type_arguments": [
+                    {
+                      "phantom": true,
+                      "argument": {
+                        "NamedTypeParameter": "Currency"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        "u64"
+      ]
+    },
+    "price_terms": {
+      "source_index": 15,
+      "index": 15,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [
+        {
+          "name": "Currency",
+          "constraints": []
+        }
+      ],
+      "parameters": [
+        {
+          "name": "self",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso_pressing",
+                    "name": "listing"
+                  },
+                  "name": "Listing",
+                  "type_arguments": [
+                    {
+                      "phantom": true,
+                      "argument": {
+                        "NamedTypeParameter": "Currency"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        {
+          "Datatype": {
+            "module": {
+              "address": "miso_pressing",
+              "name": "listing"
+            },
+            "name": "Price",
+            "type_arguments": []
+          }
+        }
+      ]
+    },
+    "state": {
+      "source_index": 16,
+      "index": 16,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [
+        {
+          "name": "Currency",
+          "constraints": []
+        }
+      ],
+      "parameters": [
+        {
+          "name": "self",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso_pressing",
+                    "name": "listing"
+                  },
+                  "name": "Listing",
+                  "type_arguments": [
+                    {
+                      "phantom": true,
+                      "argument": {
+                        "NamedTypeParameter": "Currency"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        {
+          "Datatype": {
+            "module": {
+              "address": "miso_pressing",
+              "name": "listing"
+            },
+            "name": "ListingState",
+            "type_arguments": []
+          }
+        }
+      ]
+    },
+    "is_enabled": {
+      "source_index": 17,
+      "index": 17,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [
+        {
+          "name": "Currency",
+          "constraints": []
+        }
+      ],
+      "parameters": [
+        {
+          "name": "self",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso_pressing",
+                    "name": "listing"
+                  },
+                  "name": "Listing",
+                  "type_arguments": [
+                    {
+                      "phantom": true,
+                      "argument": {
+                        "NamedTypeParameter": "Currency"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        "bool"
+      ]
+    },
+    "is_disabled": {
+      "source_index": 18,
+      "index": 18,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [
+        {
+          "name": "Currency",
+          "constraints": []
+        }
+      ],
+      "parameters": [
+        {
+          "name": "self",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso_pressing",
+                    "name": "listing"
+                  },
+                  "name": "Listing",
+                  "type_arguments": [
+                    {
+                      "phantom": true,
+                      "argument": {
+                        "NamedTypeParameter": "Currency"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        "bool"
+      ]
+    },
+    "is_live": {
+      "source_index": 19,
+      "index": 19,
+      "doc": " Whether `buy` would be accepted right now: the right pressing, this currency\n enabled, and the run not paused.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [
+        {
+          "name": "Currency",
+          "constraints": []
+        }
+      ],
+      "parameters": [
+        {
+          "name": "self",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso_pressing",
+                    "name": "listing"
+                  },
+                  "name": "Listing",
+                  "type_arguments": [
+                    {
+                      "phantom": true,
+                      "argument": {
+                        "NamedTypeParameter": "Currency"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "pressing",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso_pressing",
+                    "name": "pressing"
+                  },
+                  "name": "Pressing",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        "bool"
+      ]
+    },
+    "amount": {
+      "source_index": 20,
+      "index": 20,
+      "doc": " The price amount (the fixed price, or the floor).",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "self",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso_pressing",
+                    "name": "listing"
+                  },
+                  "name": "Price",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        "u64"
+      ]
+    }
+  },
+  "structs": {
+    "ListingKey": {
+      "index": 0,
+      "doc": " Key for deriving a `Listing`'s UID off its PRESSING's UID. The currency rides in\n the key's *type*, so one currency's key can never collide with another's — the\n derived claim is the whole uniqueness check. Uses the currency type as written, so\n upgrading the currency's package does not move the listing.",
+      "attributes": [],
+      "abilities": [
+        "Copy",
+        "Drop",
+        "Store"
+      ],
+      "type_parameters": [
+        {
+          "phantom": true,
+          "name": "Currency",
+          "constraints": []
+        }
+      ],
+      "fields": {
+        "positional_fields": true,
+        "fields": {
+          "dummy_field": {
+            "index": 0,
+            "type_": "bool"
+          }
+        }
+      }
+    },
+    "Listing": {
+      "index": 1,
+      "doc": " One currency's offer on one pressing. Permanent; edited in place, never destroyed.",
+      "attributes": [],
+      "abilities": [
+        "Key"
+      ],
+      "type_parameters": [
+        {
+          "phantom": true,
+          "name": "Currency",
+          "constraints": []
+        }
+      ],
+      "fields": {
+        "positional_fields": false,
+        "fields": {
+          "id": {
+            "index": 0,
+            "doc": null,
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "sui",
+                  "name": "object"
+                },
+                "name": "UID",
+                "type_arguments": []
+              }
+            }
+          },
+          "release_id": {
+            "index": 1,
+            "doc": " The release whose address collects the proceeds.",
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "sui",
+                  "name": "object"
+                },
+                "name": "ID",
+                "type_arguments": []
+              }
+            }
+          },
+          "pressing_id": {
+            "index": 2,
+            "doc": " The pressing these records come out of.",
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "sui",
+                  "name": "object"
+                },
+                "name": "ID",
+                "type_arguments": []
+              }
+            }
+          },
+          "price": {
+            "index": 3,
+            "doc": " What a buyer must pay per record.",
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "miso_pressing",
+                  "name": "listing"
+                },
+                "name": "Price",
+                "type_arguments": []
+              }
+            }
+          },
+          "state": {
+            "index": 4,
+            "doc": " Whether this currency is accepted right now.",
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "miso_pressing",
+                  "name": "listing"
+                },
+                "name": "ListingState",
+                "type_arguments": []
+              }
+            }
+          }
+        }
+      }
+    },
+    "ListingOpenedEvent": {
+      "index": 2,
+      "doc": null,
+      "attributes": [],
+      "abilities": [
+        "Copy",
+        "Drop"
+      ],
+      "type_parameters": [
+        {
+          "phantom": true,
+          "name": "Currency",
+          "constraints": []
+        }
+      ],
+      "fields": {
+        "positional_fields": false,
+        "fields": {
+          "listing_id": {
+            "index": 0,
+            "doc": null,
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "sui",
+                  "name": "object"
+                },
+                "name": "ID",
+                "type_arguments": []
+              }
+            }
+          },
+          "pressing_id": {
+            "index": 1,
+            "doc": null,
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "sui",
+                  "name": "object"
+                },
+                "name": "ID",
+                "type_arguments": []
+              }
+            }
+          },
+          "release_id": {
+            "index": 2,
+            "doc": null,
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "sui",
+                  "name": "object"
+                },
+                "name": "ID",
+                "type_arguments": []
+              }
+            }
+          },
+          "price": {
+            "index": 3,
+            "doc": null,
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "miso_pressing",
+                  "name": "listing"
+                },
+                "name": "Price",
+                "type_arguments": []
+              }
+            }
+          },
+          "state": {
+            "index": 4,
+            "doc": null,
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "miso_pressing",
+                  "name": "listing"
+                },
+                "name": "ListingState",
+                "type_arguments": []
+              }
+            }
+          }
+        }
+      }
+    },
+    "RecordSoldEvent": {
+      "index": 3,
+      "doc": null,
+      "attributes": [],
+      "abilities": [
+        "Copy",
+        "Drop"
+      ],
+      "type_parameters": [
+        {
+          "phantom": true,
+          "name": "Currency",
+          "constraints": []
+        }
+      ],
+      "fields": {
+        "positional_fields": false,
+        "fields": {
+          "listing_id": {
+            "index": 0,
+            "doc": null,
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "sui",
+                  "name": "object"
+                },
+                "name": "ID",
+                "type_arguments": []
+              }
+            }
+          },
+          "pressing_id": {
+            "index": 1,
+            "doc": null,
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "sui",
+                  "name": "object"
+                },
+                "name": "ID",
+                "type_arguments": []
+              }
+            }
+          },
+          "release_id": {
+            "index": 2,
+            "doc": null,
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "sui",
+                  "name": "object"
+                },
+                "name": "ID",
+                "type_arguments": []
+              }
+            }
+          },
+          "record_id": {
+            "index": 3,
+            "doc": null,
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "sui",
+                  "name": "object"
+                },
+                "name": "ID",
+                "type_arguments": []
+              }
+            }
+          },
+          "number": {
+            "index": 4,
+            "doc": null,
+            "type_": "u64"
+          },
+          "paid": {
+            "index": 5,
+            "doc": null,
+            "type_": "u64"
+          },
+          "buyer": {
+            "index": 6,
+            "doc": null,
+            "type_": "address"
+          }
+        }
+      }
+    },
+    "ListingStateChangedEvent": {
+      "index": 4,
+      "doc": null,
+      "attributes": [],
+      "abilities": [
+        "Copy",
+        "Drop"
+      ],
+      "type_parameters": [
+        {
+          "phantom": true,
+          "name": "Currency",
+          "constraints": []
+        }
+      ],
+      "fields": {
+        "positional_fields": false,
+        "fields": {
+          "listing_id": {
+            "index": 0,
+            "doc": null,
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "sui",
+                  "name": "object"
+                },
+                "name": "ID",
+                "type_arguments": []
+              }
+            }
+          },
+          "pressing_id": {
+            "index": 1,
+            "doc": null,
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "sui",
+                  "name": "object"
+                },
+                "name": "ID",
+                "type_arguments": []
+              }
+            }
+          },
+          "state": {
+            "index": 2,
+            "doc": null,
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "miso_pressing",
+                  "name": "listing"
+                },
+                "name": "ListingState",
+                "type_arguments": []
+              }
+            }
+          }
+        }
+      }
+    },
+    "ListingPriceChangedEvent": {
+      "index": 5,
+      "doc": null,
+      "attributes": [],
+      "abilities": [
+        "Copy",
+        "Drop"
+      ],
+      "type_parameters": [
+        {
+          "phantom": true,
+          "name": "Currency",
+          "constraints": []
+        }
+      ],
+      "fields": {
+        "positional_fields": false,
+        "fields": {
+          "listing_id": {
+            "index": 0,
+            "doc": null,
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "sui",
+                  "name": "object"
+                },
+                "name": "ID",
+                "type_arguments": []
+              }
+            }
+          },
+          "pressing_id": {
+            "index": 1,
+            "doc": null,
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "sui",
+                  "name": "object"
+                },
+                "name": "ID",
+                "type_arguments": []
+              }
+            }
+          },
+          "price": {
+            "index": 2,
+            "doc": null,
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "miso_pressing",
+                  "name": "listing"
+                },
+                "name": "Price",
+                "type_arguments": []
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "enums": {
+    "Price": {
+      "index": 0,
+      "doc": " Pricing policy for a listing.",
+      "attributes": [],
+      "abilities": [
+        "Copy",
+        "Drop",
+        "Store"
+      ],
+      "type_parameters": [],
+      "variants": {
+        "Fixed": {
+          "index": 0,
+          "doc": " Pay exactly `amount`.",
+          "fields": {
+            "positional_fields": false,
+            "fields": {
+              "amount": {
+                "index": 0,
+                "doc": null,
+                "type_": "u64"
+              }
+            }
+          }
+        },
+        "Floor": {
+          "index": 1,
+          "doc": " Pay at least `amount`; overpayment is forwarded to the release, not refunded.",
+          "fields": {
+            "positional_fields": false,
+            "fields": {
+              "amount": {
+                "index": 0,
+                "doc": null,
+                "type_": "u64"
+              }
+            }
+          }
+        }
+      }
+    },
+    "ListingState": {
+      "index": 1,
+      "doc": " Whether this currency is accepted. Set at creation and by `set_state`.",
+      "attributes": [],
+      "abilities": [
+        "Copy",
+        "Drop",
+        "Store"
+      ],
+      "type_parameters": [],
+      "variants": {
+        "Enabled": {
+          "index": 0,
+          "doc": " Accepting payment in this currency, if the pressing is also active.",
+          "fields": {
+            "positional_fields": false,
+            "fields": {}
+          }
+        },
+        "Disabled": {
+          "index": 1,
+          "doc": " Not accepting payment in this currency. Other currencies are unaffected.",
+          "fields": {
+            "positional_fields": false,
+            "fields": {}
+          }
+        }
+      }
+    }
+  }
+}

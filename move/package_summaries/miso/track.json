@@ -1,0 +1,416 @@
+{
+  "id": {
+    "address": "miso",
+    "name": "track"
+  },
+  "doc": " Represents a track on a release, linking a recording to its position\n in the tracklist.\n\n A `Track` is the minimal positioned (recording, revenue-share) pair:\n - `recording_id` — the routing target for the track's revenue, and the\n   handle through which all other metadata (title, cover art, and the\n   recording/composition share-type identities) is reached.\n - `split_bps` — this track's share of the release's revenue; genuinely\n   release-specific and not derivable from the recording.\n - `state` — the assign-once lifecycle that carries (then sheds) each deal's\n   target release commitment; see `TrackState`.\n\n `Track` is intentionally monomorphic: a `Release` holds a `vector<Track>`\n of tracks from many different recordings/compositions, so it cannot be\n generic over their share types. It stores no title, cover art, or\n share-type — all derived from the recording via `recording_id`.",
+  "immediate_dependencies": [
+    {
+      "address": "0x93b3b214ad031ef9c340543eeafccac74d6a9232ce9506751fbeccea850a0823",
+      "name": "bps"
+    },
+    {
+      "address": "miso",
+      "name": "deal"
+    },
+    {
+      "address": "miso",
+      "name": "recording"
+    },
+    {
+      "address": "sui",
+      "name": "object"
+    }
+  ],
+  "attributes": [],
+  "functions": {
+    "new": {
+      "source_index": 0,
+      "index": 0,
+      "doc": " Creates a new track by accepting a deal. The deal is the authorization —\n created by the recording's admin, carrying the target release and the agreed\n split. Emits a `DealAcceptedEvent`.\n\n The deal's `RecordingShare`/`CompositionShare` phantoms are erased here: a\n `Track` is monomorphic so it can live in a release's heterogeneous\n `vector<Track>`. Identity rides on those phantoms up to this point, but the\n monomorphic `Track` must store the recording's *address* for revenue routing\n — and an address can't come from a phantom. So the matching `Recording` is\n passed in (the deal's phantoms force it to be the right one) purely to read\n its id; the deal no longer stores it.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [
+        {
+          "name": "RecordingShare",
+          "constraints": []
+        },
+        {
+          "name": "CompositionShare",
+          "constraints": []
+        }
+      ],
+      "parameters": [
+        {
+          "name": "deal",
+          "type_": {
+            "Datatype": {
+              "module": {
+                "address": "miso",
+                "name": "deal"
+              },
+              "name": "Deal",
+              "type_arguments": [
+                {
+                  "phantom": true,
+                  "argument": {
+                    "NamedTypeParameter": "RecordingShare"
+                  }
+                },
+                {
+                  "phantom": true,
+                  "argument": {
+                    "NamedTypeParameter": "CompositionShare"
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "recording",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso",
+                    "name": "recording"
+                  },
+                  "name": "Recording",
+                  "type_arguments": [
+                    {
+                      "phantom": true,
+                      "argument": {
+                        "NamedTypeParameter": "RecordingShare"
+                      }
+                    },
+                    {
+                      "phantom": true,
+                      "argument": {
+                        "NamedTypeParameter": "CompositionShare"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        {
+          "Datatype": {
+            "module": {
+              "address": "miso",
+              "name": "track"
+            },
+            "name": "Track",
+            "type_arguments": []
+          }
+        }
+      ]
+    },
+    "assign": {
+      "source_index": 1,
+      "index": 1,
+      "doc": " Assigns the track to a release by verifying the release UID matches\n the track's target release ID. Can only be called once per track.",
+      "attributes": [],
+      "visibility": "Package",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "self",
+          "type_": {
+            "Reference": [
+              true,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso",
+                    "name": "track"
+                  },
+                  "name": "Track",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "release_uid",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "sui",
+                    "name": "object"
+                  },
+                  "name": "UID",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": []
+    },
+    "recording_id": {
+      "source_index": 2,
+      "index": 2,
+      "doc": " Returns the ID of the recording.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "self",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso",
+                    "name": "track"
+                  },
+                  "name": "Track",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        {
+          "Datatype": {
+            "module": {
+              "address": "sui",
+              "name": "object"
+            },
+            "name": "ID",
+            "type_arguments": []
+          }
+        }
+      ]
+    },
+    "split_bps": {
+      "source_index": 3,
+      "index": 3,
+      "doc": " Returns this track's share of the release's revenue (in basis points).",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "self",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso",
+                    "name": "track"
+                  },
+                  "name": "Track",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        {
+          "Datatype": {
+            "module": {
+              "address": "0x93b3b214ad031ef9c340543eeafccac74d6a9232ce9506751fbeccea850a0823",
+              "name": "bps"
+            },
+            "name": "BPS",
+            "type_arguments": []
+          }
+        }
+      ]
+    },
+    "is_assigned_state": {
+      "source_index": 4,
+      "index": 4,
+      "doc": " Returns true if the track is in the Assigned state.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "self",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso",
+                    "name": "track"
+                  },
+                  "name": "Track",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        "bool"
+      ]
+    },
+    "is_unassigned_state": {
+      "source_index": 5,
+      "index": 5,
+      "doc": " Returns true if the track is in the Unassigned state.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "self",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso",
+                    "name": "track"
+                  },
+                  "name": "Track",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        "bool"
+      ]
+    }
+  },
+  "structs": {
+    "Track": {
+      "index": 0,
+      "doc": " A track on a release: a positioned pointer to a recording with a revenue split.",
+      "attributes": [],
+      "abilities": [
+        "Drop",
+        "Store"
+      ],
+      "type_parameters": [],
+      "fields": {
+        "positional_fields": false,
+        "fields": {
+          "state": {
+            "index": 0,
+            "doc": " Current state of the track.",
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "miso",
+                  "name": "track"
+                },
+                "name": "TrackState",
+                "type_arguments": []
+              }
+            }
+          },
+          "recording_id": {
+            "index": 1,
+            "doc": " ID of the recording on this track. The routing target for the track's\n revenue; also the handle a consumer uses to fetch the recording (whose\n type carries the recording and composition share-type identities).",
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "sui",
+                  "name": "object"
+                },
+                "name": "ID",
+                "type_arguments": []
+              }
+            }
+          },
+          "split_bps": {
+            "index": 2,
+            "doc": " This track's share of the release's revenue, in basis points. All\n tracks in a release sum to 100%. The composition's cut is settled as\n recording-share ownership at recording creation, so it is not split out\n here — a track routes its full share to the recording.",
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "0x93b3b214ad031ef9c340543eeafccac74d6a9232ce9506751fbeccea850a0823",
+                  "name": "bps"
+                },
+                "name": "BPS",
+                "type_arguments": []
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "enums": {
+    "TrackState": {
+      "index": 0,
+      "doc": " Lifecycle state of a track within a release. A track is born `Unassigned`,\n carrying the target `release_id` its originating `Deal` committed to (the\n release id is a digest of the whole tracklist, so this is the recording\n owner's consent to the exact release configuration). At publish the release\n verifies the match and transitions the track to `Assigned`, which carries\n no id — shedding the 32-byte commitment once it has served its purpose.",
+      "attributes": [],
+      "abilities": [
+        "Copy",
+        "Drop",
+        "Store"
+      ],
+      "type_parameters": [],
+      "variants": {
+        "Unassigned": {
+          "index": 0,
+          "doc": " Track has been created but not yet assigned to a release. Carries the\n target release id the originating deal committed to.",
+          "fields": {
+            "positional_fields": true,
+            "fields": {
+              "pos0": {
+                "index": 0,
+                "doc": null,
+                "type_": {
+                  "Datatype": {
+                    "module": {
+                      "address": "sui",
+                      "name": "object"
+                    },
+                    "name": "ID",
+                    "type_arguments": []
+                  }
+                }
+              }
+            }
+          }
+        },
+        "Assigned": {
+          "index": 1,
+          "doc": " Track has been assigned to its target release.",
+          "fields": {
+            "positional_fields": false,
+            "fields": {}
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,98 +1,135 @@
-# miso-drop restructure — Drop / Edition / Listing
+# miso-pressing redesign — one pressing, one uncapped run, no editions
 
-## Decisions (settled in conversation)
+Supersedes the Drop / Edition / Listing restructure (see git history for that plan).
 
-- **`Drop`** — per-release namespace + edition counter. Derived off the `Release` UID at a
-  singleton `DropKey()`. No `Currency` phantom. Never destroyed, no state enum.
-### Revision — the wind-down state machine
+## Sixth revision (2026-07-31, settled with cofounder)
 
-The first pass left finished listings on chain indefinitely: `close` was optional, and
-`Edition.currencies` was an append-only log of every currency ever listed. Replaced with a
-three-step machine that owns the wind-down, where the first two states carry the set of
-listings still standing:
+Consolidated decision after exploring (and rejecting) permissionless minting and a
+`Record<phantom Cert>` type param — neither was ever implemented:
 
-```
-Listed { currencies } ──seal / sold out──▶ Sealed { currencies } ──last one──▶ Closed
-```
+- **Record stays Miso's product, not a neutral standard.** The open protocol layer is
+  musicos; others build their own format packages. Settings witness-gating stays: with
+  it, counterfeits can't exist at all, one stable Record type forever, and succession
+  is pure state (`authorize<V2Witness>` / `revoke<V1Witness>`) — note Settings never
+  blocked immutability (state mutates; frozen code doesn't).
+- **Renamed: package `miso_drop` → `miso_pressing`** (repo renamed miso-drop → miso-pressing).
+  `Drop` → `Pressing` — the object is not the hype moment (that's the Listing's
+  `Scheduled` state); it's the production facility: parents record UIDs at
+  `RecordKey(u64)`, owns the serial counter, hosts the listings. `drop.move` →
+  `pressing.move`, `DropKey` → `PressingKey`, `drop_id` → `pressing_id` everywhere.
+- **`Serial` → `Certificate`** (`serial.move` → `certificate.move`): the authenticity
+  stamp, `Certificate { pressing_id, number }`, attached by `mint_next` in the same
+  transaction the record is minted. Read via `certificate::of(&record)`; the key is
+  module-private, so reading and writing both live in that one module by necessity.
 
-- `listing::new` registers; `close` / `withdraw` unregister. The set is what is on chain
-  now, not a log. Both take `&mut Edition` as a result.
-- A `Capped` run seals itself on its last mint, so cleanup never waits on the artist.
-- Taking the last listing off a `Sealed` run closes it — `Closed` is a fact the chain
-  states, not one an indexer infers.
-- A listing whose window elapsed can be cleared while the run is still selling in other
-  currencies. (Deviation from the sketch, which only allowed teardown in the wind-down
-  state — that would have made expired listings linger longer, not less.)
-- `ESoldOut` is now unreachable (auto-seal fires first). Kept as an invariant guard, in the
-  same spirit as the old `ENonSequentialEdition` claim-site assert.
+## Decisions (settled in conversation, 2026-07-28)
 
-### Original decisions
+- **Record slims to intrinsic-at-birth only** — `{ id, release_id, created_at_ms }`
+  (fifth revision, 2026-07-29: `number` left the struct too). A serial is only
+  meaningful inside the sequence that issued it — a v2 sale package for the same
+  release counts from 1 again, so two records could both claim "number 1" with the
+  struct unable to say whose — which makes the serial the *issuer's* vocabulary, not
+  record identity. The core keeps serials as pure addressing: `mint` still claims
+  `RecordKey(number)` off the parent (collision-check + deterministic address,
+  `record::derive_id` recomputes/verifies), but the readable serial is miso_drop's
+  `Serial { drop_id, number }` dynamic field (`serial.move`), stamped in `mint_next`
+  so gifts get one too. `created_at_ms` survives the same razor — a birth date needs
+  no namespace — and is stamped by `miso_record` off the `Clock`, never by the minter.
+  `edition`, `purchase_currency`, `purchase_price` went contextual earlier for the
+  same reason; rarity on Miso is accrued playtime, not printed scarcity.
+- **Editions deleted.** One drop per release (claim-once `DropKey()` off the Release UID),
+  one uncapped run, forever. No `Supply`, no `EditionState`, no seal, no sold-out.
+- **Drop = serial counter + listings map.** `{ id, release_id, minted, listings:
+  VecMap<TypeName, ID> }`. Records derive off the drop at their serial (gap-free,
+  provenance-verifiable). `MintWitness` lives here now.
+- **Listings are derived AND permanent** (revised same day — first pass had fresh UIDs +
+  destroy-to-close). Derived off the drop at `ListingKey(TypeName)`, exactly one per
+  (drop, currency) ever, never destroyed. The claim-once objection to derived listing
+  addresses only applied when closing destroyed the listing; permanence dissolves it, and
+  "everything is address math" holds for the whole tree again. Drop keeps a
+  `VecSet<TypeName>` purely for enumeration (grows only).
+- **The window system is gone; one three-mode state instead** (third revision, same
+  day). `ListingState = Paused | Scheduled { start_timestamp_ms } | Active`, set at
+  creation and via `set_state` (cap-gated). `Scheduled` keeps the one load-bearing part
+  of `Window` — the trustless drop moment (live once the clock passes start, no artist
+  tx; the stored start survives as provenance of the drop time). The *end* bound was
+  deleted deliberately: a time-limited sale of an uncapped permanent listing is
+  scarcity theater, same family as editions. Ending a campaign = `set_state(Paused)`.
+  Deletions: `Window`, both window constructors, `set_window`, `is_expired`,
+  `is_in_window`, start/end projections, `EClosed`, `EInvalidWindow`, pause/resume
+  pair. `new` no longer needs `&Clock`; price races stay safe (Fixed = pay exactly,
+  Floor = never more than sent). No withdraw, no close, no `CloseReason`.
+- **Receipt owned by miso_drop.** `buy` attaches `Receipt { currency, paid, buyer,
+  listing_id }` to the record's UID under a module-private `ReceiptKey()` — unforgeable
+  and undetachable despite open `uid_mut`. Gifts (records minted outside a sale) have
+  none; read via `listing::receipt(&record): Option<Receipt>`.
 
-- **`Edition`** — one sequential run (1st edition, 2nd edition — an earliness signal, not
-  standard-vs-deluxe; a deluxe version has different tracks, so it is a different `Release`
-  and therefore a different `Drop`). Derived off the `Drop` at `EditionKey(n)`.
-  Owns the supply cap AND the serial sequence — `Record`s derive off the **Edition**, so
-  "number 7 of 500" means the same thing regardless of which currency paid for it.
-  Never destroyed. `EditionState::{Open, Sealed}` — sealing is artist-triggered and
-  irreversible.
-- **`Listing<Currency>`** — price + window for one currency. Derived off the `Edition` at
-  `ListingKey(TypeName)`. Destroyed to close; closing *is* destruction, so there is no
-  status field. The reason lives in the close event, not in storage.
-- Opening edition `n + 1` does **not** seal edition `n`. Whether to close a run is the
-  artist's call, consistent with "scarcity is the artist's choice, not a protocol stance."
-- Naming rejected along the way: `Pressing` (vinyl jargon), `Distributor` / `Label`
-  (org-level, category error), `Factory` (software-pattern register), `Shop` (a shop
-  selling one record isn't a shop), `Mint` (crypto register).
+## Done
 
-## What this removes
+- [x] `miso-record/move/sources/record.move` — slim struct; minting takes `&Clock` and
+      loses the `Currency` type param; new `derive_id(parent, number)` view; the
+      fresh-UID `mint` deleted (fourth revision) — the derived path is the singular
+      `mint`, so every record has a verifiable parent and per-parent collision-checked
+      serials (a fresh-UID mint would have allowed provenance-free records whose
+      numbers collide with a run's serials; airdrop/gift packages derive off their own
+      object instead)
+- [x] `miso-record/move/tests/record_tests.move` — 4 tests green
+- [x] `sources/edition.move` deleted; counter + witness folded into `drop.move`
+- [x] `sources/drop.move` — Drop as the single per-release run
+- [x] `sources/listing.move` — permanent derived listings, `ListingState`
+      (Paused/Scheduled/Active) + `set_state`, `set_price`, Receipt
+- [x] `sources/serial.move` — the drop's serial certificate on a record
+      (`Serial { drop_id, number }`, module-private key, attached in `mint_next`)
+- [x] Tests rewritten — 21 green (serials interleave across currencies, paused blocks
+      buy, scheduled blocks before start and opens itself after, reprice-in-place with
+      stale-payment abort, receipt contents, gift has no receipt,
+      one-listing-per-currency-ever, one-drop-per-release)
+- [x] READMEs updated (miso-pressing, miso-record)
 
-- `Drop<Currency>` phantom and the two-currency `new_edition<Old, New>`.
-- The consuming `new_edition` — editions are permanent now, nothing is destroyed.
-- `ENonSequentialEdition` and its claim-site guard — the counter on `Drop` plus
-  claim-once is the invariant.
-- `CurrentDropKey` — with `Drop.editions`, every address in the tree derives from the
-  release id alone. Discovery is address math, not a pointer.
+## Follow-up (out of scope here)
 
-## Authority
+- [ ] Display v2 (sui.io/blog/display-v2-mainnet, Sui v1.68) supports dynamic fields
+      in templates (`{parent->['key']}`) — the "no #42 in wallets" trade-off may be
+      void. At next testnet publish: register Display for `Record` via
+      `display_registry` (v1 deprecated 2026-07-31; we have no legacy Display), and
+      test whether a template can address a DF keyed by the module-private
+      `CertificateKey()` struct (docs only show string keys). If struct keys are
+      unsupported and wallet serial display is wanted: re-keying to a string key
+      allows no forgery (Certificate value stays module-private-constructible, add
+      aborts on duplicate) but allows *transplant* — defeated by the
+      `record::derive_id(cert.pressing_id, cert.number) == record.id()` binding
+      check, so strict verifiers stay safe; decide then.
 
-`release_admin_cap_release_id(cap)` (miso-protocol `release.move:315`) means only
-`drop::new` needs the `Release` object. Every later call — `next_edition`, `seal`,
-`list`, `withdraw` — authorizes against the cap alone by comparing to `release_id`.
-
-## Tasks
-
-- [x] `sources/drop.move` — `Drop`, `DropKey()`, `new`, `next_edition`, views
-- [x] `sources/edition.move` — `Edition`, `EditionKey(u32)`, `Supply`, `EditionState`,
-      `MintWitness`, package-visible `mint_next`, `seal`, `share`, views
-- [x] `sources/listing.move` — `Listing<Currency>`, `ListingKey(TypeName)`, `Price`,
-      `Window`, `CloseReason`, `new`, `buy`, `close`, `withdraw`, views
-- [x] Delete the old single-module `drop.move` surface
-- [x] Rewrite `tests/drop_tests.move` → `test_utils` + three per-module test files
-- [x] `sui move test` green — 38 tests, no warnings
-- [x] Update `README.md`
-- [ ] Follow-up (separate, not in this change): `miso-record` `is_derived_from` doc comment
-      says "e.g. a `Pressing`'s ID" — stale vocabulary, should read `Edition`.
+- [ ] TypeScript: regenerate `miso-protocol/sdk` codegen; rewrite `sdk/src/drop.ts`
+      (kill `CurrentDropKey` / `newEdition` / `DropView.edition`); miso-app drops UI +
+      `records.ts` field parsing; miso-api checkout `fulfill.ts` PTB (`drop::buy` →
+      `listing::buy`); miso-cli publish path. Note: all of these still target published
+      v5 — they never caught up with the edition split either.
+- [ ] `miso-party-extensions/party_featured_drop` — rewrite against new `Drop`/`Listing`
+- [ ] Publish both packages to testnet; authorize `miso_drop::drop::MintWitness` in
+      `miso_record::Settings` (it moved modules again — edition → drop); update
+      `miso-deployments` manifest notes
+- [ ] miso-brain map docs (`map/miso-pressing.md`, MAP.md) + whitepaper mentions of
+      `purchase_price`/`purchase_currency`
 
 ## Review
 
-**Departed from the plan in one place.** The plan had `launch<Currency>` and a matching
-`next_edition_with_listing<Currency>` as convenience entry points, to avoid spending a
-transaction on a drop that isn't listed yet. Both are unnecessary: `drop::new` and
-`drop::next_edition` return the `Edition` **unshared** and `edition::share` is public, so a
-PTB composes the whole flow — open, list in as many currencies as it likes, share — without
-the package having to anticipate the combinations. Two entry points instead of four, and
-the value has no `drop` ability, so a caller cannot lose an edition by forgetting to share
-it. This also made the suite testable without `test_scenario` in most cases.
+**Three designs in one day, each a net deletion.** Fresh-UID + withdraw solved the
+claim-once problem by destroying listings; permanence solved it better by never
+destroying them; the state enum then collapsed `paused: bool` × `Window` (a 2×2 with
+an ambiguous paused-while-scheduled corner) into one mode. Gone across the day:
+`withdraw`, `close`, `take_down`, `CloseReason`, `ListingClosedEvent`,
+`unregister_listing`, `EListingMismatch`, `Window`, `set_window`, `is_expired`,
+`is_in_window`, `EClosed`, `EInvalidWindow`. What remains: `buy`, `set_price`,
+`set_state`.
 
-**`buy` takes `&TxContext`, not `&mut`.** Nothing on the path needs mutation.
+**`is_live` is now a match on `ListingState`** — `Paused → false`,
+`Scheduled → now >= start`, `Active → true` (plus the right-drop check). The only
+clock read left in liveness is the scheduled start, which is the trustless-open
+feature, not incidental state.
 
-**Coverage.** All 27 behaviors the old single-module suite asserted are carried over,
-against the new shape. New ground: one edition selling in two currencies off one cap and
-one serial sequence (`one_edition_sells_in_two_currencies_off_one_cap`), sealing, the four
-close paths and their permissionlessness, and claim-once on both `DropKey()` and a
-currency's listing slot.
-
-**Not done, deliberately.** No republish. The witness type moved from
-`miso_drop::drop::MintWitness` to `miso_drop::edition::MintWitness`, so whatever
-`miso_record::Settings` authorizes has to be re-authorized against the new package — worth
-handling as part of the deploy, not here.
+**Coverage.** 32 miso-pressing + 4 miso-record tests. New ground vs the edition suite:
+paused blocking `buy`, a scheduled listing refusing early buys and opening itself
+after its start, repricing in place with the stale-payment abort, receipt contents
+including the floor-price tip, and receipt absence on non-sale mints. Dropped ground:
+everything about seal/sold-out/wind-down/close/windows, which no longer exists.

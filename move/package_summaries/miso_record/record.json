@@ -1,0 +1,605 @@
+{
+  "id": {
+    "address": "miso_record",
+    "name": "record"
+  },
+  "doc": " The Miso record — an owned, ownable copy of a release.\n\n Maximally slim, like `miso_player`: a `Record` is the release it is a copy of and\n the moment it was minted. Those are the only facts fixed at birth, true forever,\n and meaningful without a namespace. Everything else that makes one copy\n different from another — playtime, statistics, purchase receipts, vouchers — is\n contextual: it is applied at mint time or accrued over the record's life, so it\n lives in dynamic fields attached to the record's `UID` by extensions, never in the\n struct. The release is referenced by `ID` only, so the core has no dependency on\n the protocol; extensions that need the typed `Release` bring that dependency\n themselves.\n\n The struct deliberately holds no serial number. A serial is only meaningful inside\n the sequence that issued it — two sale packages for the same release each count\n from 1 — so it is the *issuer's* vocabulary, not the record's identity, and the\n issuing package attaches it as its own dynamic field (see `miso_pressing::certificate`).\n The core keeps serials as pure *addressing*: every record's UID is derived off its\n minting parent keyed by `RecordKey(number)`, so a slot can be claimed at most once\n per parent and a record's provenance is verifiable from address math alone\n (`derive_id`). `created_at_ms` needs no such namespace — a birth date is a fact\n about the record itself — and it is stamped by this module off the shared `Clock`,\n so a minting package cannot forge it.\n\n **Minting is gated; possession governs the rest.** A record is only ever brought\n into being through `mint`, which requires a *witness* whose type is authorized in\n `Settings` (see `miso_record::settings`). This is the single seam that lets sale\n mechanics live in *their own* packages — a drop, an auction, a giveaway — without\n this package depending on any of them, and without letting arbitrary code forge\n records. Once a record exists, authority is possession: only the owner can produce\n a `&mut Record`, so `uid_mut` is fully open — no capability, no allowlist.",
+  "immediate_dependencies": [
+    {
+      "address": "miso_record",
+      "name": "settings"
+    },
+    {
+      "address": "sui",
+      "name": "clock"
+    },
+    {
+      "address": "sui",
+      "name": "derived_object"
+    },
+    {
+      "address": "sui",
+      "name": "event"
+    },
+    {
+      "address": "sui",
+      "name": "object"
+    },
+    {
+      "address": "sui",
+      "name": "tx_context"
+    }
+  ],
+  "attributes": [],
+  "functions": {
+    "mint": {
+      "source_index": 0,
+      "index": 0,
+      "doc": " Mint a record of `release_id`, its UID *derived* off `parent` (e.g. a `Pressing`'s\n UID) keyed by `number`. This is the only way a record comes into being: every\n record is deterministically addressable from its minting context, and\n `derived_object::claim` aborts if `RecordKey(number)` was already claimed off this\n parent, so a slot can be minted at most once per parent. `number` is the claim\n slot only — the record does not store it; a serial is the issuing package's\n vocabulary, attached as that package's own dynamic field if it wants one. (There\n is deliberately no fresh-UID mint — a gifting or airdrop package derives off an\n object of its own.)\n\n `W` is a witness minted by the caller's package; its *type* must be authorized in\n `settings`. Passing an unauthorized witness aborts. The witness is consumed, so\n the caller can gate its construction (e.g. behind payment) to control who mints.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [
+        {
+          "name": "W",
+          "constraints": [
+            "Drop"
+          ]
+        }
+      ],
+      "parameters": [
+        {
+          "name": "_w",
+          "type_": {
+            "NamedTypeParameter": "W"
+          }
+        },
+        {
+          "name": "settings",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso_record",
+                    "name": "settings"
+                  },
+                  "name": "Settings",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "parent",
+          "type_": {
+            "Reference": [
+              true,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "sui",
+                    "name": "object"
+                  },
+                  "name": "UID",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "release_id",
+          "type_": {
+            "Datatype": {
+              "module": {
+                "address": "sui",
+                "name": "object"
+              },
+              "name": "ID",
+              "type_arguments": []
+            }
+          }
+        },
+        {
+          "name": "number",
+          "type_": "u64"
+        },
+        {
+          "name": "clock",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "sui",
+                    "name": "clock"
+                  },
+                  "name": "Clock",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "ctx",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "sui",
+                    "name": "tx_context"
+                  },
+                  "name": "TxContext",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        {
+          "Datatype": {
+            "module": {
+              "address": "miso_record",
+              "name": "record"
+            },
+            "name": "Record",
+            "type_arguments": []
+          }
+        }
+      ]
+    },
+    "destroy": {
+      "source_index": 1,
+      "index": 1,
+      "doc": " Destroy a record. The caller is responsible for detaching any extensions first;\n dynamic fields left attached become unreachable.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "self",
+          "type_": {
+            "Datatype": {
+              "module": {
+                "address": "miso_record",
+                "name": "record"
+              },
+              "name": "Record",
+              "type_arguments": []
+            }
+          }
+        }
+      ],
+      "return_": []
+    },
+    "uid": {
+      "source_index": 2,
+      "index": 2,
+      "doc": " Immutable UID access for extensions to read their dynamic fields.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "self",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso_record",
+                    "name": "record"
+                  },
+                  "name": "Record",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        {
+          "Reference": [
+            false,
+            {
+              "Datatype": {
+                "module": {
+                  "address": "sui",
+                  "name": "object"
+                },
+                "name": "UID",
+                "type_arguments": []
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "uid_mut": {
+      "source_index": 3,
+      "index": 3,
+      "doc": " Mutable UID access for extensions to attach/mutate their dynamic fields. Open by\n design: holding `&mut Record` already proves ownership.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "self",
+          "type_": {
+            "Reference": [
+              true,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso_record",
+                    "name": "record"
+                  },
+                  "name": "Record",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        {
+          "Reference": [
+            true,
+            {
+              "Datatype": {
+                "module": {
+                  "address": "sui",
+                  "name": "object"
+                },
+                "name": "UID",
+                "type_arguments": []
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "id": {
+      "source_index": 4,
+      "index": 4,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "self",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso_record",
+                    "name": "record"
+                  },
+                  "name": "Record",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        {
+          "Datatype": {
+            "module": {
+              "address": "sui",
+              "name": "object"
+            },
+            "name": "ID",
+            "type_arguments": []
+          }
+        }
+      ]
+    },
+    "release_id": {
+      "source_index": 5,
+      "index": 5,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "self",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso_record",
+                    "name": "record"
+                  },
+                  "name": "Record",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        {
+          "Datatype": {
+            "module": {
+              "address": "sui",
+              "name": "object"
+            },
+            "name": "ID",
+            "type_arguments": []
+          }
+        }
+      ]
+    },
+    "created_at_ms": {
+      "source_index": 6,
+      "index": 6,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "self",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso_record",
+                    "name": "record"
+                  },
+                  "name": "Record",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        "u64"
+      ]
+    },
+    "derive_id": {
+      "source_index": 7,
+      "index": 7,
+      "doc": " The address a record derived off `parent` at claim slot `number` occupies — pure\n address math, computable before the record exists. Also the provenance check:\n a record was minted off `parent` at `number` iff `derive_id(parent, number)` is\n its id. (The record does not store its slot — the issuing package's serial field\n says which number to check.)",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "parent",
+          "type_": {
+            "Datatype": {
+              "module": {
+                "address": "sui",
+                "name": "object"
+              },
+              "name": "ID",
+              "type_arguments": []
+            }
+          }
+        },
+        {
+          "name": "number",
+          "type_": "u64"
+        }
+      ],
+      "return_": [
+        {
+          "Datatype": {
+            "module": {
+              "address": "sui",
+              "name": "object"
+            },
+            "name": "ID",
+            "type_arguments": []
+          }
+        }
+      ]
+    }
+  },
+  "structs": {
+    "Record": {
+      "index": 0,
+      "doc": null,
+      "attributes": [],
+      "abilities": [
+        "Key",
+        "Store"
+      ],
+      "type_parameters": [],
+      "fields": {
+        "positional_fields": false,
+        "fields": {
+          "id": {
+            "index": 0,
+            "doc": null,
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "sui",
+                  "name": "object"
+                },
+                "name": "UID",
+                "type_arguments": []
+              }
+            }
+          },
+          "release_id": {
+            "index": 1,
+            "doc": null,
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "sui",
+                  "name": "object"
+                },
+                "name": "ID",
+                "type_arguments": []
+              }
+            }
+          },
+          "created_at_ms": {
+            "index": 2,
+            "doc": " When this record was minted, ms since Unix epoch. Stamped off the `Clock` by\n this module — never supplied by the minter.",
+            "type_": "u64"
+          }
+        }
+      }
+    },
+    "RecordKey": {
+      "index": 1,
+      "doc": " Key for deriving a `Record`'s UID off a parent object (e.g. a `Pressing`). The\n `number` makes each record deterministically addressable from the parent.",
+      "attributes": [],
+      "abilities": [
+        "Copy",
+        "Drop",
+        "Store"
+      ],
+      "type_parameters": [],
+      "fields": {
+        "positional_fields": true,
+        "fields": {
+          "pos0": {
+            "index": 0,
+            "doc": null,
+            "type_": "u64"
+          }
+        }
+      }
+    },
+    "RecordCreatedEvent": {
+      "index": 2,
+      "doc": null,
+      "attributes": [],
+      "abilities": [
+        "Copy",
+        "Drop"
+      ],
+      "type_parameters": [],
+      "fields": {
+        "positional_fields": false,
+        "fields": {
+          "record_id": {
+            "index": 0,
+            "doc": null,
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "sui",
+                  "name": "object"
+                },
+                "name": "ID",
+                "type_arguments": []
+              }
+            }
+          },
+          "release_id": {
+            "index": 1,
+            "doc": null,
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "sui",
+                  "name": "object"
+                },
+                "name": "ID",
+                "type_arguments": []
+              }
+            }
+          },
+          "number": {
+            "index": 2,
+            "doc": " The derived-claim slot the record was minted at. Context for indexers — the\n struct itself does not carry it.",
+            "type_": "u64"
+          },
+          "created_at_ms": {
+            "index": 3,
+            "doc": null,
+            "type_": "u64"
+          },
+          "created_by": {
+            "index": 4,
+            "doc": null,
+            "type_": "address"
+          }
+        }
+      }
+    },
+    "RecordDestroyedEvent": {
+      "index": 3,
+      "doc": null,
+      "attributes": [],
+      "abilities": [
+        "Copy",
+        "Drop"
+      ],
+      "type_parameters": [],
+      "fields": {
+        "positional_fields": false,
+        "fields": {
+          "record_id": {
+            "index": 0,
+            "doc": null,
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "sui",
+                  "name": "object"
+                },
+                "name": "ID",
+                "type_arguments": []
+              }
+            }
+          },
+          "release_id": {
+            "index": 1,
+            "doc": null,
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "sui",
+                  "name": "object"
+                },
+                "name": "ID",
+                "type_arguments": []
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "enums": {}
+}

@@ -2,587 +2,501 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #[test_only]
-module miso_drop::listing_tests;
+module miso_pressing::listing_tests;
 
-use miso_drop::drop;
-use miso_drop::edition::{Self, Edition};
-use miso_drop::listing::{Self, Listing};
-use miso_drop::test_utils::{a_release, authorized_settings, clock_at, id, USDX};
+use miso_pressing::certificate;
+use miso_pressing::listing::{Self, Listing};
+use miso_pressing::pressing::{Self, Pressing, PressingAdminCap};
+use miso_pressing::test_utils::{a_release, authorized_settings, id, USDX};
 use miso_record::record;
 use miso_record::settings;
+use std::unit_test::{assert_eq, destroy};
 use sui::clock;
 use sui::coin;
 use sui::sui::SUI;
 use sui::test_scenario as ts;
 
-/// Mirrors of the module-private abort codes (constants aren't importable).
-const EUnauthorized: u64 = 0; // miso_drop::listing
-const EInsufficientPayment: u64 = 1;
-const ENotStarted: u64 = 2;
-const EClosed: u64 = 3;
-const EInvalidWindow: u64 = 4;
-const EStillLive: u64 = 5;
-const ENotListed: u64 = 3; // miso_drop::edition
-
-/// A listed edition on a fresh UID, plus a matching listing registered against it.
+/// A pressing on a fresh UID, its cap, and a matching listing against it.
 fun a_listing<Currency>(
-    supply: edition::Supply,
     price: listing::Price,
-    window: listing::Window,
+    state: listing::ListingState,
     ctx: &mut TxContext,
-): (Edition, Listing<Currency>) {
-    let mut e = edition::new_for_testing(id(@0xBEEF), id(@0xD0), 0, supply, ctx);
-    e.register_currency<Currency>();
-    let l = listing::new_for_testing<Currency>(id(@0xBEEF), e.id(), 0, price, window, ctx);
-    (e, l)
+): (Pressing, PressingAdminCap, Listing<Currency>) {
+    a_listing_for<Currency>(id(@0xBEEF), price, state, ctx)
+}
+
+/// The same, bound to a given release id.
+fun a_listing_for<Currency>(
+    release_id: ID,
+    price: listing::Price,
+    state: listing::ListingState,
+    ctx: &mut TxContext,
+): (Pressing, PressingAdminCap, Listing<Currency>) {
+    let (p, admin) = pressing::new_for_testing(release_id, ctx);
+    let l = listing::new_for_testing<Currency>(release_id, p.id(), price, state, ctx);
+    (p, admin, l)
 }
 
 //=== buy ===
 
 #[test]
-fun buy_stamps_the_record_and_counts_against_both() {
+fun buy_presses_the_record_and_certifies_what_was_paid() {
     let mut ctx = tx_context::new_from_hint(@0xA, 0, 0, 0, 0);
-    let (cfg, admin) = authorized_settings(&mut ctx);
-    let clk = clock::create_for_testing(&mut ctx); // t = 0
+    let (cfg, settings_admin) = authorized_settings(&mut ctx);
+    let clk = clock::create_for_testing(&mut ctx);
 
     // Floor of 5; the buyer pays 8 — a 3-over tip, kept, not refunded.
-    let (mut e, mut l) = a_listing<SUI>(
-        edition::new_uncapped_supply(),
+    let (mut p, admin, mut l) = a_listing<SUI>(
         listing::new_floor_price(5),
-        listing::new_unbounded_window(0),
+        listing::new_enabled_state(),
         &mut ctx,
     );
-    let edition_id = e.id();
+    let pressing_id = p.id();
 
-    let payment = coin::mint_for_testing<SUI>(8, &mut ctx);
-    let r = l.buy(&mut e, payment, &cfg, &clk, &ctx);
+    let r = l.buy(&mut p, coin::mint_for_testing<SUI>(8, &mut ctx), &cfg, &clk, &ctx);
 
-    assert!(r.purchase_price() == 8); // the full 8, tip included
-    assert!(r.number() == 1);
-    assert!(r.is_derived_from(edition_id)); // provenance is the edition, not the listing
+    // One certificate carries both halves: where in the run, and on what terms.
+    let c = certificate::of(&r).destroy_some();
+    assert_eq!(c.number(), 1);
+    assert_eq!(c.purchase_price(), 8); // the full 8, tip included
+    assert_eq!(c.purchase_currency(), std::type_name::with_defining_ids<SUI>());
+    assert!(c.is_for(&r));
+    assert_eq!(record::derive_id(pressing_id, 1), r.id());
+    assert_eq!(p.supply(), 1);
 
-    // The listing counts its own currency's sales; the edition counts the run's.
-    assert!(l.sold() == 1);
-    assert!(e.minted() == 1);
-
-    record::destroy(r);
+    destroy(r);
     l.destroy_for_testing();
-    e.destroy_for_testing();
-    settings::destroy_for_testing(cfg, admin);
+    p.destroy_for_testing(admin);
+    settings::destroy_for_testing(cfg, settings_admin);
     clk.destroy_for_testing();
 }
 
-#[test]
-#[expected_failure(abort_code = EInsufficientPayment, location = miso_drop::listing)]
+#[test, expected_failure(abort_code = listing::EInsufficientPayment)]
 fun buy_aborts_on_underpayment() {
     let mut ctx = tx_context::new_from_hint(@0xA, 0, 0, 0, 0);
-    let (cfg, admin) = authorized_settings(&mut ctx);
+    let (cfg, settings_admin) = authorized_settings(&mut ctx);
     let clk = clock::create_for_testing(&mut ctx);
-    let (mut e, mut l) = a_listing<SUI>(
-        edition::new_uncapped_supply(),
+    let (mut p, admin, mut l) = a_listing<SUI>(
         listing::new_fixed_price(10),
-        listing::new_unbounded_window(0),
+        listing::new_enabled_state(),
         &mut ctx,
     );
 
-    let payment = coin::mint_for_testing<SUI>(9, &mut ctx);
-    let r = l.buy(&mut e, payment, &cfg, &clk, &ctx);
+    let r = l.buy(&mut p, coin::mint_for_testing<SUI>(9, &mut ctx), &cfg, &clk, &ctx);
 
-    record::destroy(r);
+    destroy(r);
     l.destroy_for_testing();
-    e.destroy_for_testing();
-    settings::destroy_for_testing(cfg, admin);
+    p.destroy_for_testing(admin);
+    settings::destroy_for_testing(cfg, settings_admin);
     clk.destroy_for_testing();
 }
 
-#[test]
-#[expected_failure(abort_code = EInsufficientPayment, location = miso_drop::listing)]
+#[test, expected_failure(abort_code = listing::EInsufficientPayment)]
 fun a_fixed_price_rejects_overpayment_too() {
     let mut ctx = tx_context::new_from_hint(@0xA, 0, 0, 0, 0);
-    let (cfg, admin) = authorized_settings(&mut ctx);
+    let (cfg, settings_admin) = authorized_settings(&mut ctx);
     let clk = clock::create_for_testing(&mut ctx);
-    let (mut e, mut l) = a_listing<SUI>(
-        edition::new_uncapped_supply(),
+    let (mut p, admin, mut l) = a_listing<SUI>(
         listing::new_fixed_price(10),
-        listing::new_unbounded_window(0),
+        listing::new_enabled_state(),
         &mut ctx,
     );
 
     // Fixed means exactly — a tip needs a Floor price.
-    let payment = coin::mint_for_testing<SUI>(11, &mut ctx);
-    let r = l.buy(&mut e, payment, &cfg, &clk, &ctx);
+    let r = l.buy(&mut p, coin::mint_for_testing<SUI>(11, &mut ctx), &cfg, &clk, &ctx);
 
-    record::destroy(r);
+    destroy(r);
     l.destroy_for_testing();
-    e.destroy_for_testing();
-    settings::destroy_for_testing(cfg, admin);
+    p.destroy_for_testing(admin);
+    settings::destroy_for_testing(cfg, settings_admin);
     clk.destroy_for_testing();
 }
 
-#[test]
-#[expected_failure(abort_code = ENotStarted, location = miso_drop::listing)]
-fun buy_aborts_before_the_window_opens() {
+#[test, expected_failure(abort_code = listing::EWrongPressing)]
+fun buy_aborts_with_a_pressing_this_listing_does_not_sell_from() {
     let mut ctx = tx_context::new_from_hint(@0xA, 0, 0, 0, 0);
-    let (cfg, admin) = authorized_settings(&mut ctx);
-    let clk = clock_at(50, &mut ctx);
-    let (mut e, mut l) = a_listing<SUI>(
-        edition::new_uncapped_supply(),
-        listing::new_fixed_price(0),
-        listing::new_unbounded_window(100), // scheduled for later
-        &mut ctx,
-    );
-
-    let r = l.buy(&mut e, coin::zero<SUI>(&mut ctx), &cfg, &clk, &ctx);
-
-    record::destroy(r);
-    l.destroy_for_testing();
-    e.destroy_for_testing();
-    settings::destroy_for_testing(cfg, admin);
-    clk.destroy_for_testing();
-}
-
-#[test]
-#[expected_failure(abort_code = EClosed, location = miso_drop::listing)]
-fun buy_aborts_after_the_window_closes() {
-    let mut ctx = tx_context::new_from_hint(@0xA, 0, 0, 0, 0);
-    let (cfg, admin) = authorized_settings(&mut ctx);
-    let clk = clock_at(250, &mut ctx);
-    let (mut e, mut l) = a_listing<SUI>(
-        edition::new_uncapped_supply(),
-        listing::new_fixed_price(0),
-        listing::new_bounded_window(100, 200),
-        &mut ctx,
-    );
-
-    let r = l.buy(&mut e, coin::zero<SUI>(&mut ctx), &cfg, &clk, &ctx);
-
-    record::destroy(r);
-    l.destroy_for_testing();
-    e.destroy_for_testing();
-    settings::destroy_for_testing(cfg, admin);
-    clk.destroy_for_testing();
-}
-
-#[test]
-#[expected_failure(abort_code = EUnauthorized, location = miso_drop::listing)]
-fun buy_aborts_with_an_edition_this_listing_does_not_sell_from() {
-    let mut ctx = tx_context::new_from_hint(@0xA, 0, 0, 0, 0);
-    let (cfg, admin) = authorized_settings(&mut ctx);
+    let (cfg, settings_admin) = authorized_settings(&mut ctx);
     let clk = clock::create_for_testing(&mut ctx);
-    let (e, mut l) = a_listing<SUI>(
-        edition::new_uncapped_supply(),
+    let (p, admin, mut l) = a_listing<SUI>(
         listing::new_fixed_price(0),
-        listing::new_unbounded_window(0),
+        listing::new_enabled_state(),
         &mut ctx,
     );
 
-    // A different run entirely — it must not be possible to draw its serials down.
-    let mut other = edition::new_for_testing(
-        id(@0xBEEF),
-        id(@0xD0),
-        1,
-        edition::new_uncapped_supply(),
-        &mut ctx,
-    );
+    // A different pressing entirely — it must not be possible to draw its numbers down.
+    let (mut other, other_admin) = pressing::new_for_testing(id(@0xBEEF), &mut ctx);
     let r = l.buy(&mut other, coin::zero<SUI>(&mut ctx), &cfg, &clk, &ctx);
 
-    record::destroy(r);
-    other.destroy_for_testing();
+    destroy(r);
+    other.destroy_for_testing(other_admin);
     l.destroy_for_testing();
-    e.destroy_for_testing();
-    settings::destroy_for_testing(cfg, admin);
+    p.destroy_for_testing(admin);
+    settings::destroy_for_testing(cfg, settings_admin);
     clk.destroy_for_testing();
 }
 
-//=== Window construction ===
+//=== Two switches ===
 
-#[test]
-#[expected_failure(abort_code = EInvalidWindow, location = miso_drop::listing)]
-fun an_empty_window_aborts_at_construction() {
-    listing::new_bounded_window(200, 200);
-}
-
-#[test]
-#[expected_failure(abort_code = EInvalidWindow, location = miso_drop::listing)]
-fun listing_with_an_already_elapsed_window_aborts() {
+#[test, expected_failure(abort_code = listing::EListingDisabled)]
+fun a_disabled_listing_takes_no_payment() {
     let mut ctx = tx_context::new_from_hint(@0xA, 0, 0, 0, 0);
-    let (rel, cap) = a_release(&mut ctx);
-    let clk = clock_at(500, &mut ctx);
-    let mut e = edition::new_for_testing(
-        rel.id(),
-        id(@0xD0),
-        0,
-        edition::new_uncapped_supply(),
-        &mut ctx,
-    );
-
-    // The window [100, 200] is already behind us.
-    listing::new<SUI>(
-        &mut e,
-        &cap,
-        listing::new_fixed_price(0),
-        listing::new_bounded_window(100, 200),
-        &clk,
-    );
-
-    e.destroy_for_testing();
-    std::unit_test::destroy(rel);
-    std::unit_test::destroy(cap);
-    clk.destroy_for_testing();
-}
-
-#[test]
-#[expected_failure(abort_code = ENotListed, location = miso_drop::edition)]
-fun a_sealed_edition_takes_no_new_listings() {
-    let mut ctx = tx_context::new_from_hint(@0xA, 0, 0, 0, 0);
-    let (rel, cap) = a_release(&mut ctx);
+    let (cfg, settings_admin) = authorized_settings(&mut ctx);
     let clk = clock::create_for_testing(&mut ctx);
-    let mut e = edition::new_for_testing(
-        rel.id(),
-        id(@0xD0),
-        0,
-        edition::new_uncapped_supply(),
+    let (mut p, admin, mut l) = a_listing<SUI>(
+        listing::new_fixed_price(0),
+        listing::new_disabled_state(),
         &mut ctx,
     );
-    e.seal(&cap);
 
-    listing::new<SUI>(
-        &mut e,
-        &cap,
-        listing::new_fixed_price(0),
-        listing::new_unbounded_window(0),
-        &clk,
-    );
+    let r = l.buy(&mut p, coin::zero<SUI>(&mut ctx), &cfg, &clk, &ctx);
 
-    e.destroy_for_testing();
-    std::unit_test::destroy(rel);
-    std::unit_test::destroy(cap);
+    destroy(r);
+    l.destroy_for_testing();
+    p.destroy_for_testing(admin);
+    settings::destroy_for_testing(cfg, settings_admin);
     clk.destroy_for_testing();
 }
 
-//=== Liveness ===
-
-#[test]
-fun is_live_reflects_the_window_and_the_state() {
+#[test, expected_failure(abort_code = pressing::EPressingPaused)]
+fun a_paused_pressing_beats_an_enabled_listing() {
     let mut ctx = tx_context::new_from_hint(@0xA, 0, 0, 0, 0);
-    let (cfg, admin) = authorized_settings(&mut ctx);
-    let (mut e, mut l) = a_listing<SUI>(
-        edition::new_capped_supply(1),
+    let (cfg, settings_admin) = authorized_settings(&mut ctx);
+    let clk = clock::create_for_testing(&mut ctx);
+    let (mut p, admin, mut l) = a_listing<SUI>(
         listing::new_fixed_price(0),
-        listing::new_bounded_window(100, 200),
+        listing::new_enabled_state(),
         &mut ctx,
     );
+
+    // The run-wide switch wins: the listing is open, the pressing is not.
+    p.set_state(&admin, pressing::new_paused_state());
+    assert!(!l.is_live(&p, &clk));
+    let r = l.buy(&mut p, coin::zero<SUI>(&mut ctx), &cfg, &clk, &ctx);
+
+    destroy(r);
+    l.destroy_for_testing();
+    p.destroy_for_testing(admin);
+    settings::destroy_for_testing(cfg, settings_admin);
+    clk.destroy_for_testing();
+}
+
+#[test, expected_failure(abort_code = pressing::ENotStarted)]
+fun an_enabled_listing_sells_nothing_before_the_drop_moment() {
+    let mut ctx = tx_context::new_from_hint(@0xA, 0, 0, 0, 0);
+    let (cfg, settings_admin) = authorized_settings(&mut ctx);
     let mut clk = clock::create_for_testing(&mut ctx);
-
-    // The test clock only moves forward, so assert in ascending order.
     clk.set_for_testing(50);
-    assert!(!l.is_live(&e, &clk)); // before the window opens
-    assert!(!l.is_expired(&clk));
+    let (mut p, admin, mut l) = a_listing<SUI>(
+        listing::new_fixed_price(0),
+        listing::new_enabled_state(),
+        &mut ctx,
+    );
 
-    clk.set_for_testing(150);
-    assert!(l.is_live(&e, &clk)); // inside
+    // The drop is scheduled run-wide, so listing a currency early does not open it.
+    p.set_state(&admin, pressing::new_scheduled_state(100));
+    assert!(!l.is_live(&p, &clk));
+    let r = l.buy(&mut p, coin::zero<SUI>(&mut ctx), &cfg, &clk, &ctx);
 
-    // Selling the last record of the cap ends the run, mid-window.
-    let r = l.buy(&mut e, coin::zero<SUI>(&mut ctx), &cfg, &clk, &ctx);
-    assert!(e.is_sold_out());
-    assert!(e.is_sealed()); // sold out sealed it in the same transaction
-    assert!(!l.is_live(&e, &clk));
-
-    clk.set_for_testing(250);
-    assert!(l.is_expired(&clk));
-
-    record::destroy(r);
+    destroy(r);
     l.destroy_for_testing();
-    e.destroy_for_testing();
-    settings::destroy_for_testing(cfg, admin);
+    p.destroy_for_testing(admin);
+    settings::destroy_for_testing(cfg, settings_admin);
     clk.destroy_for_testing();
 }
 
-//=== Closing ===
+#[test]
+fun the_drop_moment_opens_every_currency_at_once() {
+    let mut ctx = tx_context::new_from_hint(@0xA, 0, 0, 0, 0);
+    let (cfg, settings_admin) = authorized_settings(&mut ctx);
+    let mut clk = clock::create_for_testing(&mut ctx);
+    clk.set_for_testing(150);
+    let (mut p, admin) = pressing::new_for_testing(id(@0xBEEF), &mut ctx);
+    let mut sui_l = listing::new_for_testing<SUI>(
+        id(@0xBEEF),
+        p.id(),
+        listing::new_fixed_price(0),
+        listing::new_enabled_state(),
+        &mut ctx,
+    );
+    let usdx_l = listing::new_for_testing<USDX>(
+        id(@0xBEEF),
+        p.id(),
+        listing::new_fixed_price(0),
+        listing::new_enabled_state(),
+        &mut ctx,
+    );
+
+    // One schedule on the run, not one per rail — a drop moment is a fact about the
+    // release going on sale, and both currencies open on it together.
+    p.set_state(&admin, pressing::new_scheduled_state(100));
+    assert!(sui_l.is_live(&p, &clk));
+    assert!(usdx_l.is_live(&p, &clk));
+
+    let r = sui_l.buy(&mut p, coin::zero<SUI>(&mut ctx), &cfg, &clk, &ctx);
+    assert_eq!(certificate::of(&r).destroy_some().number(), 1);
+
+    // The first buy settled the run for everyone — the other rail sees `Active`, not a
+    // schedule it has to re-evaluate.
+    assert!(p.is_active());
+    assert!(usdx_l.is_live(&p, &clk));
+
+    destroy(r);
+    sui_l.destroy_for_testing();
+    usdx_l.destroy_for_testing();
+    p.destroy_for_testing(admin);
+    settings::destroy_for_testing(cfg, settings_admin);
+    clk.destroy_for_testing();
+}
 
 #[test]
-fun close_is_permissionless_once_the_edition_has_sold_out() {
+fun set_state_flips_one_currency_without_touching_the_others() {
     let mut ctx = tx_context::new_from_hint(@0xA, 0, 0, 0, 0);
-    let (cfg, admin) = authorized_settings(&mut ctx);
+    let (cfg, settings_admin) = authorized_settings(&mut ctx);
     let clk = clock::create_for_testing(&mut ctx);
-    let (mut e, mut l) = a_listing<SUI>(
-        edition::new_capped_supply(1),
+    let (mut p, admin, mut l) = a_listing<SUI>(
         listing::new_fixed_price(0),
-        listing::new_unbounded_window(0),
+        listing::new_enabled_state(),
         &mut ctx,
     );
 
-    let r = l.buy(&mut e, coin::zero<SUI>(&mut ctx), &cfg, &clk, &ctx);
-    l.close(&mut e, &clk); // no cap needed — buy already aborts on this listing
+    assert!(l.is_live(&p, &clk));
 
-    // That was the only listing the sold-out run was carrying, so it wound down with it.
-    assert!(e.is_closed());
-    assert!(e.outstanding_listings() == 0);
+    l.set_state(&admin, listing::new_disabled_state());
+    assert!(l.is_disabled_for_testing());
+    assert!(!l.is_live(&p, &clk));
+    // The run itself is untouched — only this currency closed.
+    assert!(p.is_active());
 
-    record::destroy(r);
-    e.destroy_for_testing();
-    settings::destroy_for_testing(cfg, admin);
+    l.set_state(&admin, listing::new_enabled_state());
+    assert!(l.is_enabled_for_testing());
+    let r = l.buy(&mut p, coin::zero<SUI>(&mut ctx), &cfg, &clk, &ctx);
+    assert_eq!(certificate::of(&r).destroy_some().number(), 1);
+
+    destroy(r);
+    l.destroy_for_testing();
+    p.destroy_for_testing(admin);
+    settings::destroy_for_testing(cfg, settings_admin);
     clk.destroy_for_testing();
 }
 
-#[test]
-fun close_is_permissionless_once_the_window_has_elapsed() {
+#[test, expected_failure(abort_code = listing::EUnauthorized)]
+fun set_state_aborts_with_a_cap_for_another_pressing() {
     let mut ctx = tx_context::new_from_hint(@0xA, 0, 0, 0, 0);
-    let clk = clock_at(250, &mut ctx);
-    let (mut e, l) = a_listing<SUI>(
-        edition::new_uncapped_supply(),
+    let (p, admin, mut l) = a_listing<SUI>(
         listing::new_fixed_price(0),
-        listing::new_bounded_window(100, 200),
+        listing::new_enabled_state(),
         &mut ctx,
     );
+    let foreign = pressing::foreign_admin_cap_for_testing(id(@0xDEAD), &mut ctx);
 
-    l.close(&mut e, &clk);
+    l.set_state(&foreign, listing::new_disabled_state());
 
-    // An expired listing does not have to wait for the whole run to end before it can be
-    // cleared up — and clearing it up does not end the run.
-    assert!(e.is_listed());
-    assert!(!e.has_currency<SUI>());
-    assert!(e.outstanding_listings() == 0);
-
-    e.destroy_for_testing();
-    clk.destroy_for_testing();
+    destroy(foreign);
+    l.destroy_for_testing();
+    p.destroy_for_testing(admin);
 }
 
+//=== Repricing in place ===
+
 #[test]
-fun close_is_permissionless_once_the_edition_is_sealed() {
+fun set_price_reprices_the_standing_listing() {
     let mut ctx = tx_context::new_from_hint(@0xA, 0, 0, 0, 0);
+    let (cfg, settings_admin) = authorized_settings(&mut ctx);
     let clk = clock::create_for_testing(&mut ctx);
-    let (mut e, l) = a_listing<SUI>(
-        edition::new_uncapped_supply(),
-        listing::new_fixed_price(0),
-        listing::new_unbounded_window(0),
+    let (mut p, admin, mut l) = a_listing<SUI>(
+        listing::new_fixed_price(10),
+        listing::new_enabled_state(),
         &mut ctx,
     );
-    e.seal_for_testing();
-    assert!(e.is_sealed());
+    let listing_id = l.id();
 
-    l.close(&mut e, &clk);
+    let r1 = l.buy(&mut p, coin::mint_for_testing<SUI>(10, &mut ctx), &cfg, &clk, &ctx);
 
-    assert!(e.is_closed());
+    l.set_price(&admin, listing::new_fixed_price(20));
+    assert_eq!(l.price().amount(), 20);
+    let r2 = l.buy(&mut p, coin::mint_for_testing<SUI>(20, &mut ctx), &cfg, &clk, &ctx);
 
-    e.destroy_for_testing();
+    // Same listing through the change; each record certifies what IT paid.
+    assert_eq!(l.id(), listing_id);
+    assert_eq!(certificate::of(&r1).destroy_some().purchase_price(), 10);
+    assert_eq!(certificate::of(&r2).destroy_some().purchase_price(), 20);
+    assert_eq!(p.supply(), 2);
+
+    destroy(r1);
+    destroy(r2);
+    l.destroy_for_testing();
+    p.destroy_for_testing(admin);
+    settings::destroy_for_testing(cfg, settings_admin);
     clk.destroy_for_testing();
 }
 
-#[test]
-#[expected_failure(abort_code = EStillLive, location = miso_drop::listing)]
-fun close_aborts_while_the_listing_is_still_sellable() {
+#[test, expected_failure(abort_code = listing::EInsufficientPayment)]
+fun a_stale_payment_aborts_against_a_new_price() {
     let mut ctx = tx_context::new_from_hint(@0xA, 0, 0, 0, 0);
+    let (cfg, settings_admin) = authorized_settings(&mut ctx);
     let clk = clock::create_for_testing(&mut ctx);
-    let (mut e, l) = a_listing<SUI>(
-        edition::new_uncapped_supply(),
-        listing::new_fixed_price(0),
-        listing::new_unbounded_window(0),
+    let (mut p, admin, mut l) = a_listing<SUI>(
+        listing::new_fixed_price(10),
+        listing::new_enabled_state(),
         &mut ctx,
     );
 
-    // Nothing has ended — pulling this offer is the artist's call, via `withdraw`.
-    l.close(&mut e, &clk);
+    // The artist reprices while a payment for the old fixed price is in flight —
+    // Fixed means exactly, so the stale coin is refused, never overcharged.
+    l.set_price(&admin, listing::new_fixed_price(20));
+    let r = l.buy(&mut p, coin::mint_for_testing<SUI>(10, &mut ctx), &cfg, &clk, &ctx);
 
-    e.destroy_for_testing();
+    destroy(r);
+    l.destroy_for_testing();
+    p.destroy_for_testing(admin);
+    settings::destroy_for_testing(cfg, settings_admin);
     clk.destroy_for_testing();
 }
 
-#[test]
-fun withdraw_closes_a_live_listing() {
+#[test, expected_failure(abort_code = listing::EUnauthorized)]
+fun set_price_aborts_with_a_cap_for_another_pressing() {
     let mut ctx = tx_context::new_from_hint(@0xA, 0, 0, 0, 0);
-    let (rel, cap) = a_release(&mut ctx);
-    let mut e = edition::new_for_testing(
-        rel.id(),
-        id(@0xD0),
-        0,
-        edition::new_uncapped_supply(),
+    let (p, admin, mut l) = a_listing<SUI>(
+        listing::new_fixed_price(10),
+        listing::new_enabled_state(),
         &mut ctx,
     );
-    e.register_currency<SUI>();
-    let l = listing::new_for_testing<SUI>(
-        rel.id(),
-        e.id(),
-        0,
-        listing::new_fixed_price(0),
-        listing::new_unbounded_window(0),
-        &mut ctx,
-    );
+    let foreign = pressing::foreign_admin_cap_for_testing(id(@0xDEAD), &mut ctx);
 
-    l.withdraw(&mut e, &cap);
+    l.set_price(&foreign, listing::new_fixed_price(1));
 
-    // The run keeps selling — it just isn't listed in SUI any more.
-    assert!(e.is_listed());
-    assert!(!e.has_currency<SUI>());
-
-    e.destroy_for_testing();
-    std::unit_test::destroy(rel);
-    std::unit_test::destroy(cap);
+    destroy(foreign);
+    l.destroy_for_testing();
+    p.destroy_for_testing(admin);
 }
 
+//=== One listing per currency, ever ===
+
 #[test]
-#[expected_failure(abort_code = EUnauthorized, location = miso_drop::listing)]
-fun withdraw_aborts_with_a_cap_for_another_release() {
+fun has_listing_reads_the_derived_slot_with_no_stored_currency_set() {
     let mut ctx = tx_context::new_from_hint(@0xA, 0, 0, 0, 0);
-    let (rel, cap) = a_release(&mut ctx);
-    let (mut e, l) = a_listing<SUI>(
-        edition::new_uncapped_supply(),
-        listing::new_fixed_price(0),
-        listing::new_unbounded_window(0),
-        &mut ctx,
-    );
+    let (mut p, admin) = pressing::new_for_testing(id(@0xBEEF), &mut ctx);
 
-    // The listing's release is @0xBEEF, not the one this cap controls.
-    l.withdraw(&mut e, &cap);
+    assert!(!listing::has_listing<SUI>(&p));
+    listing::new<SUI>(&mut p, &admin, listing::new_fixed_price(10), listing::new_enabled_state());
 
-    e.destroy_for_testing();
-    std::unit_test::destroy(rel);
-    std::unit_test::destroy(cap);
+    // The pressing keeps no set of currencies — existence IS the derived slot, and the
+    // phantom-typed key keeps one currency's slot from answering for another's.
+    assert!(listing::has_listing<SUI>(&p));
+    assert!(!listing::has_listing<USDX>(&p));
+
+    p.destroy_for_testing(admin);
+}
+
+#[test, expected_failure(abort_code = pressing::EUnauthorized)]
+fun listing_new_aborts_with_a_cap_for_another_pressing() {
+    let mut ctx = tx_context::new_from_hint(@0xA, 0, 0, 0, 0);
+    let (mut p, admin) = pressing::new_for_testing(id(@0xBEEF), &mut ctx);
+    let foreign = pressing::foreign_admin_cap_for_testing(id(@0xDEAD), &mut ctx);
+
+    listing::new<SUI>(&mut p, &foreign, listing::new_fixed_price(10), listing::new_enabled_state());
+
+    destroy(foreign);
+    p.destroy_for_testing(admin);
+}
+
+#[test, expected_failure] // derived_object::claim aborts: ListingKey<SUI>() is claim-once
+fun a_pressing_cannot_be_listed_twice_in_one_currency() {
+    let mut ctx = tx_context::new_from_hint(@0xA, 0, 0, 0, 0);
+    let (mut p, admin) = pressing::new_for_testing(id(@0xBEEF), &mut ctx);
+
+    listing::new<SUI>(&mut p, &admin, listing::new_fixed_price(10), listing::new_enabled_state());
+    // The slot is permanent — repricing or disabling the standing listing is the way,
+    // never a second one. The phantom-typed key makes the claim itself the check.
+    listing::new<SUI>(&mut p, &admin, listing::new_fixed_price(20), listing::new_enabled_state());
+
+    p.destroy_for_testing(admin);
 }
 
 //=== The whole chain, end to end ===
 
 #[test]
-fun one_edition_sells_in_two_currencies_off_one_cap() {
+fun one_pressing_sells_in_two_currencies_off_one_number_sequence() {
     let mut sc = ts::begin(@0xA);
-    let (cfg, admin) = authorized_settings(sc.ctx());
+    let (cfg, settings_admin) = authorized_settings(sc.ctx());
     let clk = clock::create_for_testing(sc.ctx());
     let (mut rel, cap) = a_release(sc.ctx());
     let release_id = rel.id();
 
-    // Open the drop and its first edition, capped at 3, and list it in two currencies —
-    // all in one transaction, because `new` hands the edition back unshared.
-    let mut e = drop::new(&mut rel, &cap, edition::new_capped_supply(3));
-    let edition_id = e.id();
-    listing::new<SUI>(
-        &mut e,
-        &cap,
-        listing::new_fixed_price(10),
-        listing::new_unbounded_window(0),
-        &clk,
-    );
-    listing::new<USDX>(
-        &mut e,
-        &cap,
-        listing::new_fixed_price(25),
-        listing::new_unbounded_window(0),
-        &clk,
-    );
-    assert!(e.has_currency<SUI>() && e.has_currency<USDX>());
-    e.share();
-
-    // Both listings sit exactly where the currency type says they should.
-    assert!(listing::derive_id<SUI>(edition_id) != listing::derive_id<USDX>(edition_id));
+    // Open the pressing and list it in two currencies — all in one transaction,
+    // because `new` hands the pressing back unshared. The release cap is used once,
+    // here, and never again; the pressing cap governs everything after.
+    let (mut p, admin) = pressing::new(&mut rel, &cap, pressing::new_active_state());
+    let pressing_id = p.id();
+    listing::new<SUI>(&mut p, &admin, listing::new_fixed_price(10), listing::new_enabled_state());
+    listing::new<USDX>(&mut p, &admin, listing::new_fixed_price(25), listing::new_enabled_state());
+    assert!(listing::has_listing<SUI>(&p) && listing::has_listing<USDX>(&p));
+    p.share();
 
     sc.next_tx(@0xA);
-    let mut edition = sc.take_shared<Edition>();
+    let mut p = sc.take_shared<Pressing>();
     let mut sui_listing = sc.take_shared<Listing<SUI>>();
     let mut usdx_listing = sc.take_shared<Listing<USDX>>();
 
-    assert!(sui_listing.id() == listing::derive_id<SUI>(edition_id));
-    assert!(usdx_listing.id() == listing::derive_id<USDX>(edition_id));
-    assert!(sui_listing.price() == 10);
-    assert!(usdx_listing.price() == 25);
+    // Both listings sit exactly where the currency type says they should — every
+    // address in the tree is pure math off the release id.
+    assert_eq!(sui_listing.id(), listing::derive_id<SUI>(pressing_id));
+    assert_eq!(usdx_listing.id(), listing::derive_id<USDX>(pressing_id));
+    assert!(listing::derive_id<SUI>(pressing_id) != listing::derive_id<USDX>(pressing_id));
+    assert_eq!(sui_listing.price().amount(), 10);
+    assert_eq!(usdx_listing.price().amount(), 25);
 
-    // One numbered run, two payment rails: the serials interleave.
-    let r1 = sui_listing.buy(
-        &mut edition,
-        coin::mint_for_testing<SUI>(10, sc.ctx()),
-        &cfg,
-        &clk,
-        sc.ctx(),
-    );
+    // One run, two payment rails: the numbers interleave.
+    let r1 = sui_listing.buy(&mut p, coin::mint_for_testing<SUI>(10, sc.ctx()), &cfg, &clk, sc.ctx());
     let r2 = usdx_listing.buy(
-        &mut edition,
+        &mut p,
         coin::mint_for_testing<USDX>(25, sc.ctx()),
         &cfg,
         &clk,
         sc.ctx(),
     );
-    let r3 = sui_listing.buy(
-        &mut edition,
-        coin::mint_for_testing<SUI>(10, sc.ctx()),
-        &cfg,
-        &clk,
-        sc.ctx(),
+    let r3 = sui_listing.buy(&mut p, coin::mint_for_testing<SUI>(10, sc.ctx()), &cfg, &clk, sc.ctx());
+
+    assert_eq!(certificate::of(&r1).destroy_some().number(), 1);
+    assert_eq!(certificate::of(&r2).destroy_some().number(), 2);
+    assert_eq!(certificate::of(&r3).destroy_some().number(), 3);
+    assert_eq!(record::derive_id(pressing_id, 2), r2.id());
+    assert_eq!(r1.release_id(), release_id);
+
+    // Each record's certificate names the rail it actually came through.
+    assert_eq!(
+        certificate::of(&r1).destroy_some().purchase_currency(),
+        std::type_name::with_defining_ids<SUI>(),
+    );
+    assert_eq!(
+        certificate::of(&r2).destroy_some().purchase_currency(),
+        std::type_name::with_defining_ids<USDX>(),
     );
 
-    assert!(r1.number() == 1);
-    assert!(r2.number() == 2);
-    assert!(r3.number() == 3);
-    assert!(r1.is_derived_from(edition_id));
-    assert!(r2.is_derived_from(edition_id));
-    assert!(r1.release_id() == release_id);
+    // Every one of them verifies from chain state alone.
+    assert!(pressing::verify_record(&r1));
+    assert!(pressing::verify_record(&r2));
+    assert!(pressing::verify_record(&r3));
+    assert_eq!(p.supply(), 3);
 
-    // Three sales exhausted one shared cap of three, not two caps of three.
-    assert!(edition.minted() == 3);
-    assert!(edition.is_sold_out());
-    assert!(sui_listing.sold() == 2);
-    assert!(usdx_listing.sold() == 1);
-    assert!(!sui_listing.is_live(&edition, &clk));
-    assert!(!usdx_listing.is_live(&edition, &clk));
+    // The artist stops selling. One call to the pressing closes every rail at once —
+    // nothing comes down, and the listings keep their addresses and their terms.
+    p.set_state(&admin, pressing::new_paused_state());
+    assert!(!sui_listing.is_live(&p, &clk));
+    assert!(!usdx_listing.is_live(&p, &clk));
+    assert!(listing::has_listing<SUI>(&p) && listing::has_listing<USDX>(&p));
+    assert_eq!(record::derive_id(pressing_id, 1), r1.id()); // sold records stay verifiable forever
 
-    // The sale that finished the cap sealed the run, so both listings are now anyone's
-    // to clear up — and the run knows it is still carrying exactly two of them.
-    assert!(edition.is_sealed());
-    assert!(edition.outstanding_listings() == 2);
-
-    sui_listing.close(&mut edition, &clk);
-    assert!(edition.is_sealed()); // one still standing
-    assert!(edition.outstanding_listings() == 1);
-
-    usdx_listing.close(&mut edition, &clk);
-
-    // Nothing of this run is left on chain but the run itself, which keeps the
-    // denominator "of 3" and the claim markers that make the records verifiable.
-    assert!(edition.is_closed());
-    assert!(edition.outstanding_listings() == 0);
-    assert!(r1.is_derived_from(edition_id));
-
-    record::destroy(r1);
-    record::destroy(r2);
-    record::destroy(r3);
-    ts::return_shared(edition);
-    std::unit_test::destroy(rel);
-    std::unit_test::destroy(cap);
-    settings::destroy_for_testing(cfg, admin);
+    destroy(r1);
+    destroy(r2);
+    destroy(r3);
+    ts::return_shared(p);
+    ts::return_shared(sui_listing);
+    ts::return_shared(usdx_listing);
+    destroy(rel);
+    destroy(cap);
+    destroy(admin);
+    settings::destroy_for_testing(cfg, settings_admin);
     clk.destroy_for_testing();
     sc.end();
-}
-
-#[test]
-#[expected_failure] // derived_object::claim aborts: a currency's slot is claim-once
-fun an_edition_cannot_be_listed_twice_in_one_currency() {
-    let mut ctx = tx_context::new_from_hint(@0xA, 0, 0, 0, 0);
-    let (rel, cap) = a_release(&mut ctx);
-    let clk = clock::create_for_testing(&mut ctx);
-    let mut e = edition::new_for_testing(
-        rel.id(),
-        id(@0xD0),
-        0,
-        edition::new_uncapped_supply(),
-        &mut ctx,
-    );
-
-    listing::new<SUI>(
-        &mut e,
-        &cap,
-        listing::new_fixed_price(10),
-        listing::new_unbounded_window(0),
-        &clk,
-    );
-    // The slot is on the edition, which outlives every listing — so this is refused
-    // even after the first listing has been closed.
-    listing::new<SUI>(
-        &mut e,
-        &cap,
-        listing::new_fixed_price(20),
-        listing::new_unbounded_window(0),
-        &clk,
-    );
-
-    e.destroy_for_testing();
-    std::unit_test::destroy(rel);
-    std::unit_test::destroy(cap);
-    clk.destroy_for_testing();
 }

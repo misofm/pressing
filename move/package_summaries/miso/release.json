@@ -1,0 +1,1221 @@
+{
+  "id": {
+    "address": "miso",
+    "name": "release"
+  },
+  "doc": " Represents a music release in Miso.\n A release is an ordered tracklist with per-track revenue distribution\n configuration. Cover art lives in the `cover_art` extension, not in core.\n\n The tracklist is deliberately FLAT — a `vector<Track>` with no disc\n structure. Grouping a sequence into discs, vinyl sides, acts, or movements\n is a property of a distribution medium, not of the release: it has more\n than one correct rendering, which makes it presentation, and presentation\n lives in the metadata extension. A consequence worth stating: the stored\n tracklist and the digest pre-image have the same shape, so what signers\n consented to is exactly what is stored — nothing structural is chosen\n after consent except the title.\n\n ### Key Features:\n\n - Ordered flat tracklist (grouping is presentation, in the metadata extension)\n - Configurable per-track revenue splits\n - State machine: Initialized -> Published\n\n Attribution (credits, primary/featured artists) is intentionally NOT part of\n core: it is display-oriented, varies across platforms, and is never read by\n the economics. It lives in a first-party credits extension attached via\n `uid_mut`, so core takes no dependency on an identity package and core\n publish enforces no attribution.\n\n The same rule governs naming. Core stores what a thing *is* — identity and\n everything the economics read; extensions describe it. The release's `title`\n is the one embedded name: it is constitutive (naming the package is part of\n creating it) and freezing it at publish is a buyer-facing guarantee. Edition\n naming (\"Deluxe Edition\"), disc titles, localized titles, and DSP-shaped\n slots all have more than one correct rendering — presentation — and live in\n the metadata extension.\n\n ### Consent scope\n\n The release digest — and therefore the derived release id every `Deal`\n commits to — binds the economics and membership of the release: the ordered\n list of `(recording, split)` pairs and the creator's nonce. It deliberately\n binds nothing else. The title — the one embedded field outside the digest —\n and everything in the extension layer (artwork, credits, display grouping)\n are chosen by the release creator, before or after deals are signed, and\n are trusted and publicly attributable rather than cryptographically\n committed. See `deal::new` for the signer-side statement of this boundary.\n\n ### Lifecycle and trust model\n\n A release is `key`-only with no `drop`: a fresh `Initialized` object\n cannot be transferred, wrapped, publicly shared, or discarded, and its only\n by-value consumer is `publish`. Create-and-publish is therefore atomic by\n construction — an `Initialized` release cannot outlive its creating\n transaction, and every release that exists on-chain is `Published` and\n shared. There is deliberately no keep function; assembling tracks, discs,\n and the release must fit one transaction.\n\n `uid_mut` works in any lifecycle state and is permanent root over ALL\n dynamic fields on the object — including fields attached by other\n extensions. \"Immutable after publish\" covers the embedded fields only;\n extension-layer data stays admin-mutable in perpetuity. This is the\n designed extension surface, and it is the one trust assumption that never\n expires: integrators should model the cap holder as able to mutate or\n delete any extension data, forever.",
+  "immediate_dependencies": [
+    {
+      "address": "0x93b3b214ad031ef9c340543eeafccac74d6a9232ce9506751fbeccea850a0823",
+      "name": "bps"
+    },
+    {
+      "address": "miso",
+      "name": "track"
+    },
+    {
+      "address": "std",
+      "name": "string"
+    },
+    {
+      "address": "std",
+      "name": "vector"
+    },
+    {
+      "address": "sui",
+      "name": "bcs"
+    },
+    {
+      "address": "sui",
+      "name": "clock"
+    },
+    {
+      "address": "sui",
+      "name": "derived_object"
+    },
+    {
+      "address": "sui",
+      "name": "event"
+    },
+    {
+      "address": "sui",
+      "name": "hash"
+    },
+    {
+      "address": "sui",
+      "name": "object"
+    },
+    {
+      "address": "sui",
+      "name": "transfer"
+    },
+    {
+      "address": "sui",
+      "name": "tx_context"
+    }
+  ],
+  "attributes": [],
+  "functions": {
+    "init": {
+      "source_index": 0,
+      "index": 0,
+      "doc": " Module initializer. Creates and shares the `ReleaseRegistry`.",
+      "attributes": [],
+      "visibility": "Private",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "_otw",
+          "type_": {
+            "Datatype": {
+              "module": {
+                "address": "miso",
+                "name": "release"
+              },
+              "name": "RELEASE",
+              "type_arguments": []
+            }
+          }
+        },
+        {
+          "name": "ctx",
+          "type_": {
+            "Reference": [
+              true,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "sui",
+                    "name": "tx_context"
+                  },
+                  "name": "TxContext",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": []
+    },
+    "new": {
+      "source_index": 1,
+      "index": 1,
+      "doc": " Creates a new release with the given configuration.\n Returns the release and admin capability.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "title",
+          "type_": {
+            "Datatype": {
+              "module": {
+                "address": "std",
+                "name": "string"
+              },
+              "name": "String",
+              "type_arguments": []
+            }
+          }
+        },
+        {
+          "name": "tracks",
+          "type_": {
+            "vector": {
+              "Datatype": {
+                "module": {
+                  "address": "miso",
+                  "name": "track"
+                },
+                "name": "Track",
+                "type_arguments": []
+              }
+            }
+          }
+        },
+        {
+          "name": "nonce",
+          "type_": "u256"
+        },
+        {
+          "name": "registry",
+          "type_": {
+            "Reference": [
+              true,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso",
+                    "name": "release"
+                  },
+                  "name": "ReleaseRegistry",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        {
+          "Datatype": {
+            "module": {
+              "address": "miso",
+              "name": "release"
+            },
+            "name": "Release",
+            "type_arguments": []
+          }
+        },
+        {
+          "Datatype": {
+            "module": {
+              "address": "miso",
+              "name": "release"
+            },
+            "name": "ReleaseAdminCap",
+            "type_arguments": []
+          }
+        }
+      ]
+    },
+    "publish": {
+      "source_index": 2,
+      "index": 2,
+      "doc": " Publishes the release, making it immutable.\n Track splits must be set and sum to 100% before publishing.\n Required State: Initialized\n\n Note: core enforces no attribution requirement — credits live in the credits\n extension and may be attached before or after publish via `uid_mut`.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "self",
+          "type_": {
+            "Datatype": {
+              "module": {
+                "address": "miso",
+                "name": "release"
+              },
+              "name": "Release",
+              "type_arguments": []
+            }
+          }
+        },
+        {
+          "name": "cap",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso",
+                    "name": "release"
+                  },
+                  "name": "ReleaseAdminCap",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "clock",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "sui",
+                    "name": "clock"
+                  },
+                  "name": "Clock",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": []
+    },
+    "authorize": {
+      "source_index": 3,
+      "index": 3,
+      "doc": " Verifies that the admin capability matches this release.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "self",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso",
+                    "name": "release"
+                  },
+                  "name": "Release",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "cap",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso",
+                    "name": "release"
+                  },
+                  "name": "ReleaseAdminCap",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": []
+    },
+    "derive_release_id": {
+      "source_index": 4,
+      "index": 4,
+      "doc": " Derives the release ID that `new()` would produce for the given inputs,\n without creating the object. This is the on-chain equivalent of the\n client-side `deriveReleaseId()` function.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "recording_ids",
+          "type_": {
+            "vector": {
+              "Datatype": {
+                "module": {
+                  "address": "sui",
+                  "name": "object"
+                },
+                "name": "ID",
+                "type_arguments": []
+              }
+            }
+          }
+        },
+        {
+          "name": "track_split_values",
+          "type_": {
+            "vector": "u64"
+          }
+        },
+        {
+          "name": "nonce",
+          "type_": "u256"
+        },
+        {
+          "name": "registry",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso",
+                    "name": "release"
+                  },
+                  "name": "ReleaseRegistry",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        {
+          "Datatype": {
+            "module": {
+              "address": "sui",
+              "name": "object"
+            },
+            "name": "ID",
+            "type_arguments": []
+          }
+        }
+      ]
+    },
+    "id": {
+      "source_index": 5,
+      "index": 5,
+      "doc": " Returns the release's object ID.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "self",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso",
+                    "name": "release"
+                  },
+                  "name": "Release",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        {
+          "Datatype": {
+            "module": {
+              "address": "sui",
+              "name": "object"
+            },
+            "name": "ID",
+            "type_arguments": []
+          }
+        }
+      ]
+    },
+    "state": {
+      "source_index": 6,
+      "index": 6,
+      "doc": " Returns the release state.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "self",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso",
+                    "name": "release"
+                  },
+                  "name": "Release",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        {
+          "Datatype": {
+            "module": {
+              "address": "miso",
+              "name": "release"
+            },
+            "name": "ReleaseState",
+            "type_arguments": []
+          }
+        }
+      ]
+    },
+    "is_initialized_state": {
+      "source_index": 7,
+      "index": 7,
+      "doc": " Returns true if the release is in the Initialized state.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "self",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso",
+                    "name": "release"
+                  },
+                  "name": "Release",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        "bool"
+      ]
+    },
+    "is_published_state": {
+      "source_index": 8,
+      "index": 8,
+      "doc": " Returns true if the release is in the Published state.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "self",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso",
+                    "name": "release"
+                  },
+                  "name": "Release",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        "bool"
+      ]
+    },
+    "title": {
+      "source_index": 9,
+      "index": 9,
+      "doc": " Returns the release title.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "self",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso",
+                    "name": "release"
+                  },
+                  "name": "Release",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        {
+          "Reference": [
+            false,
+            {
+              "Datatype": {
+                "module": {
+                  "address": "std",
+                  "name": "string"
+                },
+                "name": "String",
+                "type_arguments": []
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "tracks": {
+      "source_index": 10,
+      "index": 10,
+      "doc": " Returns a reference to the ordered tracklist.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "self",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso",
+                    "name": "release"
+                  },
+                  "name": "Release",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        {
+          "Reference": [
+            false,
+            {
+              "vector": {
+                "Datatype": {
+                  "module": {
+                    "address": "miso",
+                    "name": "track"
+                  },
+                  "name": "Track",
+                  "type_arguments": []
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "total_tracks": {
+      "source_index": 11,
+      "index": 11,
+      "doc": " Returns the number of tracks on the release.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "self",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso",
+                    "name": "release"
+                  },
+                  "name": "Release",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        "u64"
+      ]
+    },
+    "contains_recording": {
+      "source_index": 12,
+      "index": 12,
+      "doc": " Returns whether the release contains a track for the given recording.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "self",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso",
+                    "name": "release"
+                  },
+                  "name": "Release",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "recording_id",
+          "type_": {
+            "Datatype": {
+              "module": {
+                "address": "sui",
+                "name": "object"
+              },
+              "name": "ID",
+              "type_arguments": []
+            }
+          }
+        }
+      ],
+      "return_": [
+        "bool"
+      ]
+    },
+    "release_admin_cap_release_id": {
+      "source_index": 13,
+      "index": 13,
+      "doc": " Returns the release ID associated with the admin capability.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "cap",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso",
+                    "name": "release"
+                  },
+                  "name": "ReleaseAdminCap",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        {
+          "Datatype": {
+            "module": {
+              "address": "sui",
+              "name": "object"
+            },
+            "name": "ID",
+            "type_arguments": []
+          }
+        }
+      ]
+    },
+    "uid": {
+      "source_index": 14,
+      "index": 14,
+      "doc": " Returns a reference to the release's UID for reading dynamic fields.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "self",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso",
+                    "name": "release"
+                  },
+                  "name": "Release",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        {
+          "Reference": [
+            false,
+            {
+              "Datatype": {
+                "module": {
+                  "address": "sui",
+                  "name": "object"
+                },
+                "name": "UID",
+                "type_arguments": []
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "uid_mut": {
+      "source_index": 15,
+      "index": 15,
+      "doc": " Returns a mutable reference to the release's UID.\n Requires the admin capability. Works in any lifecycle state — dynamic\n fields are the extension surface (e.g. credits) and stay admin-mutable\n after publish; only the embedded fields are frozen. The reference is root\n over every dynamic field on the object, including fields attached by\n other extensions.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "self",
+          "type_": {
+            "Reference": [
+              true,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso",
+                    "name": "release"
+                  },
+                  "name": "Release",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "cap",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso",
+                    "name": "release"
+                  },
+                  "name": "ReleaseAdminCap",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        {
+          "Reference": [
+            true,
+            {
+              "Datatype": {
+                "module": {
+                  "address": "sui",
+                  "name": "object"
+                },
+                "name": "UID",
+                "type_arguments": []
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "extract_digest_inputs": {
+      "source_index": 16,
+      "index": 16,
+      "doc": " Extracts the recording IDs, split values, and split sum from the tracklist.\n Used for release digest calculation and split validation. The vectors mirror\n the tracklist ordering exactly — the digest pre-image IS the stored shape.",
+      "attributes": [],
+      "visibility": "Private",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "tracks",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "vector": {
+                  "Datatype": {
+                    "module": {
+                      "address": "miso",
+                      "name": "track"
+                    },
+                    "name": "Track",
+                    "type_arguments": []
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        {
+          "vector": {
+            "Datatype": {
+              "module": {
+                "address": "sui",
+                "name": "object"
+              },
+              "name": "ID",
+              "type_arguments": []
+            }
+          }
+        },
+        {
+          "vector": "u64"
+        },
+        "u64"
+      ]
+    },
+    "calculate_release_digest": {
+      "source_index": 17,
+      "index": 17,
+      "doc": " Calculates the deterministic release digest from recording IDs, split values, and nonce.",
+      "attributes": [],
+      "visibility": "Private",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "recording_ids",
+          "type_": {
+            "vector": {
+              "Datatype": {
+                "module": {
+                  "address": "sui",
+                  "name": "object"
+                },
+                "name": "ID",
+                "type_arguments": []
+              }
+            }
+          }
+        },
+        {
+          "name": "track_split_values",
+          "type_": {
+            "vector": "u64"
+          }
+        },
+        {
+          "name": "nonce",
+          "type_": "u256"
+        }
+      ],
+      "return_": [
+        {
+          "vector": "u8"
+        }
+      ]
+    },
+    "assert_track_assignments": {
+      "source_index": 18,
+      "index": 18,
+      "doc": " Assigns all tracks to this release, verifying each track's target release ID matches.",
+      "attributes": [],
+      "visibility": "Private",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "self",
+          "type_": {
+            "Reference": [
+              true,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso",
+                    "name": "release"
+                  },
+                  "name": "Release",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": []
+    }
+  },
+  "structs": {
+    "RELEASE": {
+      "index": 0,
+      "doc": null,
+      "attributes": [],
+      "abilities": [
+        "Drop"
+      ],
+      "type_parameters": [],
+      "fields": {
+        "positional_fields": true,
+        "fields": {
+          "dummy_field": {
+            "index": 0,
+            "type_": "bool"
+          }
+        }
+      }
+    },
+    "Release": {
+      "index": 1,
+      "doc": " A music release containing one or more discs of tracks.",
+      "attributes": [],
+      "abilities": [
+        "Key"
+      ],
+      "type_parameters": [],
+      "fields": {
+        "positional_fields": false,
+        "fields": {
+          "id": {
+            "index": 0,
+            "doc": " Unique identifier for this release.",
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "sui",
+                  "name": "object"
+                },
+                "name": "UID",
+                "type_arguments": []
+              }
+            }
+          },
+          "state": {
+            "index": 1,
+            "doc": " Current lifecycle state.",
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "miso",
+                  "name": "release"
+                },
+                "name": "ReleaseState",
+                "type_arguments": []
+              }
+            }
+          },
+          "title": {
+            "index": 2,
+            "doc": " Title of the release.",
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "std",
+                  "name": "string"
+                },
+                "name": "String",
+                "type_arguments": []
+              }
+            }
+          },
+          "tracks": {
+            "index": 3,
+            "doc": " The ordered tracklist. Same shape as the digest pre-image every deal\n consented to; display grouping lives in the metadata extension.",
+            "type_": {
+              "vector": {
+                "Datatype": {
+                  "module": {
+                    "address": "miso",
+                    "name": "track"
+                  },
+                  "name": "Track",
+                  "type_arguments": []
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "ReleaseKey": {
+      "index": 2,
+      "doc": " Key for release UID derivation.",
+      "attributes": [],
+      "abilities": [
+        "Copy",
+        "Drop",
+        "Store"
+      ],
+      "type_parameters": [],
+      "fields": {
+        "positional_fields": true,
+        "fields": {
+          "pos0": {
+            "index": 0,
+            "doc": null,
+            "type_": {
+              "vector": "u8"
+            }
+          }
+        }
+      }
+    },
+    "ReleaseRegistry": {
+      "index": 3,
+      "doc": " A registry that acts as a parent object for release UID derivation.\n\n Every `release::new` takes `&mut` on this single shared object, so release\n creation serializes per checkpoint. Deliberate: one registry namespaces\n every digest, keeping derived release ids globally collision-free and\n client-derivable. The throughput ceiling is accepted — releases are rare\n events; compositions and recordings avoid the registry entirely (fresh\n objects, no contention).",
+      "attributes": [],
+      "abilities": [
+        "Key"
+      ],
+      "type_parameters": [],
+      "fields": {
+        "positional_fields": false,
+        "fields": {
+          "id": {
+            "index": 0,
+            "doc": null,
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "sui",
+                  "name": "object"
+                },
+                "name": "UID",
+                "type_arguments": []
+              }
+            }
+          }
+        }
+      }
+    },
+    "ReleaseAdminCap": {
+      "index": 4,
+      "doc": " Capability that authorizes modifications to a specific release.\n Initialized when a release is registered and transferred to the owner.",
+      "attributes": [],
+      "abilities": [
+        "Key",
+        "Store"
+      ],
+      "type_parameters": [],
+      "fields": {
+        "positional_fields": false,
+        "fields": {
+          "id": {
+            "index": 0,
+            "doc": " Unique identifier for this capability.",
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "sui",
+                  "name": "object"
+                },
+                "name": "UID",
+                "type_arguments": []
+              }
+            }
+          },
+          "release_id": {
+            "index": 1,
+            "doc": " ID of the release this capability controls.",
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "sui",
+                  "name": "object"
+                },
+                "name": "ID",
+                "type_arguments": []
+              }
+            }
+          }
+        }
+      }
+    },
+    "ReleaseAdminCapKey": {
+      "index": 5,
+      "doc": null,
+      "attributes": [],
+      "abilities": [
+        "Copy",
+        "Drop",
+        "Store"
+      ],
+      "type_parameters": [],
+      "fields": {
+        "positional_fields": true,
+        "fields": {
+          "dummy_field": {
+            "index": 0,
+            "type_": "bool"
+          }
+        }
+      }
+    },
+    "ReleasePublishedEvent": {
+      "index": 6,
+      "doc": " Emitted once when a release is published. A pure pointer: it carries the\n release's identity. A release's embedded fields (discs, tracks) are\n immutable after publishing, so an indexer treats this as a signal to\n fetch the full object by `release_id`; all indexed data — including the\n publish timestamp — lives in the object itself. Dynamic fields (e.g.\n credits attached by the credits extension) may still be attached afterward.\n\n There is deliberately no `ReleaseCreatedEvent`: an `Initialized` release\n exists only inside its creating transaction (create-and-publish is atomic),\n so publish is the one lifecycle moment an observer can ever see. Pre-publish\n correlation is available from `DealCreatedEvent.release_id`, which carries\n the derived id before the release exists.",
+      "attributes": [],
+      "abilities": [
+        "Copy",
+        "Drop"
+      ],
+      "type_parameters": [],
+      "fields": {
+        "positional_fields": false,
+        "fields": {
+          "release_id": {
+            "index": 0,
+            "doc": null,
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "sui",
+                  "name": "object"
+                },
+                "name": "ID",
+                "type_arguments": []
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "enums": {
+    "ReleaseState": {
+      "index": 0,
+      "doc": " Lifecycle state of a release.",
+      "attributes": [],
+      "abilities": [
+        "Copy",
+        "Drop",
+        "Store"
+      ],
+      "type_parameters": [],
+      "variants": {
+        "Initialized": {
+          "index": 0,
+          "doc": " Release is initialized but not yet published.",
+          "fields": {
+            "positional_fields": false,
+            "fields": {}
+          }
+        },
+        "Published": {
+          "index": 1,
+          "doc": " Release is published and immutable. Includes publication timestamp.",
+          "fields": {
+            "positional_fields": true,
+            "fields": {
+              "pos0": {
+                "index": 0,
+                "doc": " Timestamp (ms) when published.",
+                "type_": "u64"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

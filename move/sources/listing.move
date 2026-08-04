@@ -1,55 +1,56 @@
 // Copyright (c) Miso Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-/// One currency's offer on an edition — a *Listing*.
+/// One currency's offer on a pressing — a *Listing*.
 ///
-/// A listing answers exactly two questions: **what does it cost** and **when can you buy
-/// it**. Everything about *what you get* — the run, the cap, the serial number — belongs
-/// to the `Edition`. So an edition sold in SUI and in USDC has two listings, each with its
-/// own price and window, both drawing on the same cap and the same serial sequence.
+/// A listing answers exactly two questions: **what does it cost** and **can you pay
+/// in this currency**. Everything about *what you get* — the run, the number —
+/// belongs to the `Pressing`. So a pressing sold in SUI and in USDC has two listings,
+/// each with its own price and switch, both drawing on the same number sequence.
 ///
-/// A listing's UID is derived off its edition's UID keyed by the currency's `TypeName`, so
-/// there is at most one listing per (edition, currency) and its address is computable from
-/// the edition's alone.
+/// A listing's UID is derived off its pressing's UID at `ListingKey<Currency>()`, so
+/// there is exactly one listing per (pressing, currency) — ever — and its address is
+/// computable from the pressing's alone. The key is *phantom-typed* rather than a
+/// stored `TypeName`, which makes the currency part of the key's type: distinct
+/// currencies are distinct key types, so `derived_object::claim` enforces
+/// once-per-currency by itself and the pressing needs no set of currencies to check
+/// against. Listings are **permanent**: never destroyed, never replaced. The offer
+/// changes *in place* — repriced, disabled, re-enabled — and the listing keeps its
+/// identity through every change.
 ///
-/// # Price and window
+/// # Price
 ///
-/// - `Price` — `Fixed` (pay exactly) or `Floor` (pay at least; overpayment is kept as a
-///   tip, not refunded). The whole payment forwards to the release's address; the record
-///   stamps the currency and the exact amount paid.
-/// - `Window` — `Unbounded { start }` (opens, possibly in the future, never closes) or
-///   `Bounded { start, end }`.
+/// `Fixed` (pay exactly) or `Floor` (pay at least; overpayment is kept as a tip, not
+/// refunded). The whole payment forwards to the release's address. Settable with the
+/// `PressingAdminCap` (`set_price`) — repricing is an edit, not a teardown — and a
+/// change cannot catch a buyer out: a `Fixed` buyer pays *exactly*, so a stale
+/// payment aborts against a new price, and a `Floor` buyer never pays more than the
+/// coin they sent.
 ///
-/// Both are fixed at creation. Liveness is never stored: it is a pure function of the
-/// window against the clock and of the edition's cap against its count.
+/// # Two switches
 ///
-/// # Lifecycle — closing *is* destroying
+/// A listing is `Enabled` or `Disabled`; a disabled listing takes no payment in its
+/// currency, while the pressing's other currencies carry on. Above it, the pressing's
+/// own `Scheduled → Active → Paused` governs every currency at once
+/// (`pressing::mint_next`). A sale needs both open.
 ///
-/// A listing has no status field, because it has no states worth storing. Closing it is
-/// destroying it: `withdraw` for the artist pulling an offer at will, `close` for anyone
-/// clearing up one that is already finished (its window elapsed, or its edition over). The
-/// reason rides on `ListingClosedEvent` — where an indexer wants it, and where it cannot
-/// drift out of sync with reality.
+/// The **when** lives on the pressing, not here: a drop moment is a fact about the
+/// release going on sale, not about one payment rail, and a run that opened in SUI at
+/// Friday 8pm and in USDC at some other time would have two drop moments and one
+/// number sequence. So a listing carries no schedule — only whether its currency is
+/// taken.
 ///
-/// A listing never outlives its usefulness. `close` is permissionless the moment the
-/// listing can no longer sell, so a finished offer does not sit on chain waiting for the
-/// artist to remember it — and because both paths hand the currency back to the edition,
-/// the run knows exactly what it is still carrying and closes itself when the last one
-/// comes down.
+/// # The certificate
 ///
-/// Destroying is safe precisely because the edition is not: the claim marker for this
-/// currency stays on the edition forever, so the address can never be re-derived and no
-/// already-minted record can be collided with. The trade is that a closed listing is
-/// closed for good — selling that currency again means a new edition. The marker also
-/// gives clients a free three-way read with no stored state: no marker means never
-/// listed, a marker with no object means closed, an object means sellable.
-module miso_drop::listing;
+/// What the buyer paid is not part of the record — it is a fact about the *sale* — so
+/// it rides out on the record's `Certificate`, stamped by `pressing::mint_next`
+/// alongside the number. One field, written once, in the transaction that pressed the
+/// record.
+module miso_pressing::listing;
 
-use miso::release::ReleaseAdminCap;
-use miso_drop::edition::Edition;
+use miso_pressing::pressing::{Pressing, PressingAdminCap};
 use miso_record::record::Record;
 use miso_record::settings::Settings;
-use std::type_name::{Self, TypeName};
 use sui::balance;
 use sui::clock::Clock;
 use sui::coin::Coin;
@@ -58,25 +59,23 @@ use sui::event::emit;
 
 //=== Structs ===
 
-/// Key for deriving a `Listing`'s UID off its EDITION's UID: the currency's type. Uses
-/// defining IDs, so upgrading the currency's package does not move the listing.
-public struct ListingKey(TypeName) has copy, drop, store;
+/// Key for deriving a `Listing`'s UID off its PRESSING's UID. The currency rides in
+/// the key's *type*, so one currency's key can never collide with another's — the
+/// derived claim is the whole uniqueness check. Uses the currency type as written, so
+/// upgrading the currency's package does not move the listing.
+public struct ListingKey<phantom Currency>() has copy, drop, store;
 
-/// One currency's offer on one edition. Immutable terms; destroyed to close.
+/// One currency's offer on one pressing. Permanent; edited in place, never destroyed.
 public struct Listing<phantom Currency> has key {
     id: UID,
     /// The release whose address collects the proceeds.
     release_id: ID,
-    /// The edition these records come out of.
-    edition_id: ID,
-    /// That edition's number, denormalized for clients and events.
-    edition_number: u32,
+    /// The pressing these records come out of.
+    pressing_id: ID,
     /// What a buyer must pay per record.
     price: Price,
-    /// When this listing sells.
-    window: Window,
-    /// Records sold through THIS currency (the edition holds the run's total).
-    sold: u64,
+    /// Whether this currency is accepted right now.
+    state: ListingState,
 }
 
 //=== Enums ===
@@ -89,73 +88,62 @@ public enum Price has copy, drop, store {
     Floor { amount: u64 },
 }
 
-/// When a listing sells. `buy` rejects purchases outside the window.
-public enum Window has copy, drop, store {
-    /// Opens at `start_timestamp_ms` (Unix ms; may be in the future — a scheduled
-    /// listing) and never closes.
-    Unbounded { start_timestamp_ms: u64 },
-    /// Sells only within `[start_timestamp_ms, end_timestamp_ms]` (Unix ms).
-    Bounded { start_timestamp_ms: u64, end_timestamp_ms: u64 },
-}
-
-/// Why a listing was closed. Carried on the event, never stored.
-public enum CloseReason has copy, drop, store {
-    /// The edition minted its last record.
-    SoldOut,
-    /// The listing's bounded window elapsed.
-    Expired,
-    /// The edition was sealed by the artist.
-    Sealed,
-    /// The artist pulled the offer.
-    Withdrawn,
+/// Whether this currency is accepted. Set at creation and by `set_state`.
+public enum ListingState has copy, drop, store {
+    /// Accepting payment in this currency, if the pressing is also active.
+    Enabled,
+    /// Not accepting payment in this currency. Other currencies are unaffected.
+    Disabled,
 }
 
 //=== Events ===
 
 public struct ListingOpenedEvent<phantom Currency> has copy, drop {
     listing_id: ID,
-    edition_id: ID,
+    pressing_id: ID,
     release_id: ID,
-    edition_number: u32,
     price: Price,
-    window: Window,
+    state: ListingState,
 }
 
 public struct RecordSoldEvent<phantom Currency> has copy, drop {
     listing_id: ID,
-    edition_id: ID,
+    pressing_id: ID,
     release_id: ID,
-    edition_number: u32,
     record_id: ID,
     number: u64,
     paid: u64,
     buyer: address,
 }
 
-public struct ListingClosedEvent<phantom Currency> has copy, drop {
+public struct ListingStateChangedEvent<phantom Currency> has copy, drop {
     listing_id: ID,
-    edition_id: ID,
-    release_id: ID,
-    edition_number: u32,
-    sold: u64,
-    reason: CloseReason,
+    pressing_id: ID,
+    state: ListingState,
+}
+
+public struct ListingPriceChangedEvent<phantom Currency> has copy, drop {
+    listing_id: ID,
+    pressing_id: ID,
+    price: Price,
 }
 
 //=== Errors ===
 
-/// The admin cap does not control this listing's release, or the edition passed is not
-/// the one this listing sells from.
-const EUnauthorized: u64 = 0;
-/// Payment does not satisfy the listing's price.
-const EInsufficientPayment: u64 = 1;
-/// The listing has not opened yet (`now < start_timestamp_ms`).
-const ENotStarted: u64 = 2;
-/// The listing's window has closed (`now > end_timestamp_ms`).
-const EClosed: u64 = 3;
-/// A bounded window must be non-empty and not already elapsed.
-const EInvalidWindow: u64 = 4;
-/// The listing is still sellable — only `withdraw` can close it.
-const EStillLive: u64 = 5;
+// Authorization errors
+#[error]
+const EUnauthorized: vector<u8> = b"This admin cap does not control this listing's pressing";
+
+#[error]
+const EWrongPressing: vector<u8> = b"That is not the pressing this listing sells from";
+
+// State errors
+#[error]
+const EListingDisabled: vector<u8> = b"This listing does not accept payment in this currency";
+
+// Validation errors
+#[error]
+const EInsufficientPayment: vector<u8> = b"Payment does not satisfy the listing's price";
 
 //=== Term Constructors ===
 
@@ -169,94 +157,70 @@ public fun new_floor_price(amount: u64): Price {
     Price::Floor { amount }
 }
 
-/// A window that opens at `start_timestamp_ms` (may be in the future) and never closes.
-public fun new_unbounded_window(start_timestamp_ms: u64): Window {
-    Window::Unbounded { start_timestamp_ms }
+/// The enabled state: this currency is accepted.
+public fun new_enabled_state(): ListingState {
+    ListingState::Enabled
 }
 
-/// A window selling only within `[start_timestamp_ms, end_timestamp_ms]`. The close must
-/// be strictly after the open.
-public fun new_bounded_window(start_timestamp_ms: u64, end_timestamp_ms: u64): Window {
-    assert!(end_timestamp_ms > start_timestamp_ms, EInvalidWindow);
-    Window::Bounded { start_timestamp_ms, end_timestamp_ms }
+/// The disabled state: this currency is not accepted.
+public fun new_disabled_state(): ListingState {
+    ListingState::Disabled
 }
 
 //=== Public Functions ===
 
-/// List an edition for sale in `Currency` on the given price and window, and share it.
+/// List the pressing for sale in `Currency` at the given price and state, and share
+/// it.
 ///
-/// At most one listing per (edition, currency) can ever exist: the slot is a derived-object
-/// claim on the edition, and the edition outlives every listing, so the marker is
-/// permanent. Adding a second currency to a live run is just another call here — no new
-/// edition, no change to the run's cap or serial sequence.
+/// Exactly one listing per (pressing, currency), ever: the slot is a derived-object
+/// claim on the pressing at `ListingKey<Currency>()`, and listings are never
+/// destroyed — so a second call for the same currency aborts in the claim. Every
+/// later change to this currency's offer is an edit to this object, not a
+/// replacement of it.
 public fun new<Currency>(
-    edition: &mut Edition,
-    cap: &ReleaseAdminCap,
+    pressing: &mut Pressing,
+    cap: &PressingAdminCap,
     price: Price,
-    window: Window,
-    clock: &Clock,
+    state: ListingState,
 ) {
-    edition.authorize(cap);
-    edition.assert_listed();
-    assert_window_not_elapsed(&window, clock);
+    pressing.authorize(cap);
 
-    let release_id = edition.release_id();
-    let edition_id = edition.id();
-    let edition_number = edition.number();
-
-    let id = derived_object::claim(
-        edition.uid_mut(),
-        ListingKey(type_name::with_defining_ids<Currency>()),
-    );
-    edition.register_currency<Currency>();
+    let release_id = pressing.release_id();
+    let pressing_id = pressing.id();
+    let id = derived_object::claim(pressing.uid_mut(), ListingKey<Currency>());
 
     emit(ListingOpenedEvent<Currency> {
         listing_id: id.to_inner(),
-        edition_id,
+        pressing_id,
         release_id,
-        edition_number,
         price,
-        window,
+        state,
     });
 
-    transfer::share_object(Listing<Currency> {
-        id,
-        release_id,
-        edition_id,
-        edition_number,
-        price,
-        window,
-        sold: 0,
-    })
+    transfer::share_object(Listing<Currency> { id, release_id, pressing_id, price, state })
 }
 
-/// Buy one record: pay this listing's price, take the next serial out of the edition.
+/// Buy one record: pay this listing's price, take the next number out of the pressing.
 ///
-/// `payment` must satisfy the price (exactly, for `Fixed`; at least, for `Floor`). The
-/// ENTIRE payment forwards to the release's address — under `Floor`, anything above the
-/// floor is kept as a tip, not refunded. The record's number is the edition's next
-/// 1-based serial, shared with every other currency selling the same run, and its UID is
-/// derived off the EDITION. `settings` must authorize this package's `MintWitness`.
+/// `payment` must satisfy the price (exactly, for `Fixed`; at least, for `Floor`).
+/// The ENTIRE payment forwards to the release's address — under `Floor`, anything
+/// above the floor is kept as a tip, not refunded. The record's number is the
+/// pressing's next 1-based value, shared with every other currency selling the same
+/// run, and its UID is derived off the pressing. The sale's terms ride out on the
+/// record's `Certificate`. `settings` must authorize this package's `MintWitness`.
+///
+/// Both switches must be open: this listing `Enabled`, checked here, and the run
+/// selling at this moment, checked in `pressing::mint_next`.
 public fun buy<Currency>(
     self: &mut Listing<Currency>,
-    edition: &mut Edition,
+    pressing: &mut Pressing,
     payment: Coin<Currency>,
     settings: &Settings,
     clock: &Clock,
     ctx: &TxContext,
 ): Record {
-    assert!(self.edition_id == edition.id(), EUnauthorized);
-
-    let now = clock.timestamp_ms();
-    match (self.window) {
-        Window::Unbounded { start_timestamp_ms } => {
-            assert!(now >= start_timestamp_ms, ENotStarted);
-        },
-        Window::Bounded { start_timestamp_ms, end_timestamp_ms } => {
-            assert!(now >= start_timestamp_ms, ENotStarted);
-            assert!(now <= end_timestamp_ms, EClosed);
-        },
-    };
+    assert!(self.pressing_id == pressing.id(), EWrongPressing);
+    assert!(self.is_enabled(), EListingDisabled);
 
     let paid = payment.value();
     match (self.price) {
@@ -273,17 +237,17 @@ public fun buy<Currency>(
         payment.destroy_zero();
     };
 
-    // The edition enforces the seal and the cap, and owns the serial.
-    let record = edition.mint_next<Currency>(settings, paid, ctx);
-    self.sold = self.sold + 1;
+    // The pressing owns the number, checks the run-wide switch, stamps the record's
+    // birth date off the clock, and certifies it with what was just paid.
+    let record = pressing.mint_next<Currency>(settings, paid, clock, ctx);
 
     emit(RecordSoldEvent<Currency> {
         listing_id: self.id.to_inner(),
-        edition_id: self.edition_id,
+        pressing_id: self.pressing_id,
         release_id: self.release_id,
-        edition_number: self.edition_number,
         record_id: record.id(),
-        number: edition.minted(),
+        // mint_next just advanced the counter to this record's number.
+        number: pressing.supply(),
         paid,
         buyer: ctx.sender(),
     });
@@ -291,80 +255,59 @@ public fun buy<Currency>(
     record
 }
 
-/// Pull the offer and destroy the listing. The artist's call, allowed at any time —
-/// including while it is still selling.
-public fun withdraw<Currency>(
-    self: Listing<Currency>,
-    edition: &mut Edition,
-    cap: &ReleaseAdminCap,
+/// Enable or disable this currency. Leaves every other currency untouched; to stop
+/// the whole run at once, pause the pressing (`pressing::set_state`).
+public fun set_state<Currency>(
+    self: &mut Listing<Currency>,
+    cap: &PressingAdminCap,
+    state: ListingState,
 ) {
-    assert!(cap.release_admin_cap_release_id() == self.release_id, EUnauthorized);
-    self.take_down(edition, CloseReason::Withdrawn);
+    self.authorize(cap);
+    self.state = state;
+    emit(ListingStateChangedEvent<Currency> {
+        listing_id: self.id.to_inner(),
+        pressing_id: self.pressing_id,
+        state,
+    });
 }
 
-/// Clear up a listing that is already finished — its window elapsed, or the edition it
-/// sells from is over (sold out, or sealed). Permissionless, because it cannot change any
-/// outcome: every one of these conditions already makes `buy` abort, so closing the
-/// listing takes nothing away from anyone. Aborts while the listing can still sell; that
-/// is the artist's call, via `withdraw`.
-public fun close<Currency>(self: Listing<Currency>, edition: &mut Edition, clock: &Clock) {
-    let reason = if (edition.is_sold_out()) {
-        CloseReason::SoldOut
-    } else if (!edition.is_listed()) {
-        CloseReason::Sealed
-    } else if (self.is_expired(clock)) {
-        CloseReason::Expired
-    } else {
-        abort EStillLive
-    };
-
-    self.take_down(edition, reason);
+/// Reprice the listing in place. Safe against in-flight buys by construction: a
+/// `Fixed` buyer pays exactly, so a stale payment aborts against the new price, and a
+/// `Floor` buyer never pays more than the coin they sent.
+public fun set_price<Currency>(
+    self: &mut Listing<Currency>,
+    cap: &PressingAdminCap,
+    price: Price,
+) {
+    self.authorize(cap);
+    self.price = price;
+    emit(ListingPriceChangedEvent<Currency> {
+        listing_id: self.id.to_inner(),
+        pressing_id: self.pressing_id,
+        price,
+    });
 }
 
 //=== Internal ===
 
-/// Hand the currency back to the edition and delete the listing. Unregistering is what
-/// walks the run down its state machine: taking the last listing off a sealed run closes
-/// it. The claim marker stays on the edition forever, so this address is retired, not
-/// freed — the currency cannot be listed against this run again.
-fun take_down<Currency>(self: Listing<Currency>, edition: &mut Edition, reason: CloseReason) {
-    assert!(self.edition_id == edition.id(), EUnauthorized);
-    edition.unregister_currency<Currency>();
-
-    let Listing { id, release_id, edition_id, edition_number, sold, .. } = self;
-    let listing_id = id.to_inner();
-    id.delete();
-
-    emit(ListingClosedEvent<Currency> {
-        listing_id,
-        edition_id,
-        release_id,
-        edition_number,
-        sold,
-        reason,
-    });
-}
-
-/// A bounded window must not already be elapsed. (Structural validity — the close
-/// strictly after the open — is enforced at construction by `new_bounded_window`.)
-fun assert_window_not_elapsed(window: &Window, clock: &Clock) {
-    match (window) {
-        Window::Unbounded { .. } => (),
-        Window::Bounded { end_timestamp_ms, .. } => {
-            assert!(*end_timestamp_ms > clock.timestamp_ms(), EInvalidWindow);
-        },
-    }
+/// Abort unless `cap` controls this listing's pressing.
+fun authorize<Currency>(self: &Listing<Currency>, cap: &PressingAdminCap) {
+    assert!(cap.pressing_id() == self.pressing_id, EUnauthorized);
 }
 
 //=== View Functions ===
 
-/// The address `Currency`'s listing on `edition_id` occupies — pure address math,
-/// computable before the listing exists and after it has been closed.
-public fun derive_id<Currency>(edition_id: ID): ID {
-    derived_object::derive_address(
-        edition_id,
-        ListingKey(type_name::with_defining_ids<Currency>()),
-    ).to_id()
+/// The address `Currency`'s listing on `pressing_id` occupies — pure address math,
+/// computable before the listing exists.
+public fun derive_id<Currency>(pressing_id: ID): ID {
+    derived_object::derive_address(pressing_id, ListingKey<Currency>()).to_id()
+}
+
+/// Whether `pressing` has a listing in `Currency` yet. Reads the derived slot
+/// directly, so the pressing stores no set of currencies; to enumerate every listing,
+/// index `ListingOpenedEvent<Currency>`.
+public fun has_listing<Currency>(pressing: &Pressing): bool {
+    derived_object::exists(pressing.uid(), ListingKey<Currency>())
 }
 
 public fun id<Currency>(self: &Listing<Currency>): ID {
@@ -375,69 +318,27 @@ public fun release_id<Currency>(self: &Listing<Currency>): ID {
     self.release_id
 }
 
-public fun edition_id<Currency>(self: &Listing<Currency>): ID {
-    self.edition_id
+public fun pressing_id<Currency>(self: &Listing<Currency>): ID {
+    self.pressing_id
 }
 
-public fun edition_number<Currency>(self: &Listing<Currency>): u32 {
-    self.edition_number
-}
-
-public fun price<Currency>(self: &Listing<Currency>): u64 {
-    self.price.amount()
-}
-
-public fun price_terms<Currency>(self: &Listing<Currency>): Price {
+public fun price<Currency>(self: &Listing<Currency>): Price {
     self.price
 }
 
-public fun window<Currency>(self: &Listing<Currency>): Window {
-    self.window
+public fun state<Currency>(self: &Listing<Currency>): ListingState {
+    self.state
 }
 
-public fun sold<Currency>(self: &Listing<Currency>): u64 {
-    self.sold
-}
-
-/// Flat projection of `window`: when the listing opens.
-public fun start_timestamp_ms<Currency>(self: &Listing<Currency>): u64 {
-    match (self.window) {
-        Window::Unbounded { start_timestamp_ms } => start_timestamp_ms,
-        Window::Bounded { start_timestamp_ms, .. } => start_timestamp_ms,
-    }
-}
-
-/// Flat projection of `window`: the close, or `none` if unbounded.
-public fun end_timestamp_ms<Currency>(self: &Listing<Currency>): Option<u64> {
-    match (self.window) {
-        Window::Unbounded { .. } => option::none(),
-        Window::Bounded { end_timestamp_ms, .. } => option::some(end_timestamp_ms),
-    }
-}
-
-/// Whether the clock is inside the listing's window.
-public fun is_in_window<Currency>(self: &Listing<Currency>, clock: &Clock): bool {
-    let now = clock.timestamp_ms();
-    match (self.window) {
-        Window::Unbounded { start_timestamp_ms } => now >= start_timestamp_ms,
-        Window::Bounded { start_timestamp_ms, end_timestamp_ms } => {
-            now >= start_timestamp_ms && now <= end_timestamp_ms
-        },
-    }
-}
-
-/// Whether the listing's bounded window has elapsed (always `false` if unbounded).
-public fun is_expired<Currency>(self: &Listing<Currency>, clock: &Clock): bool {
-    match (self.window) {
-        Window::Unbounded { .. } => false,
-        Window::Bounded { end_timestamp_ms, .. } => clock.timestamp_ms() > end_timestamp_ms,
-    }
-}
-
-/// Whether `buy` would be accepted right now: the right edition, still listed, and inside
-/// the window. Sold-out needs no check of its own — the run seals itself on its last mint.
-public fun is_live<Currency>(self: &Listing<Currency>, edition: &Edition, clock: &Clock): bool {
-    self.edition_id == edition.id() && edition.is_listed() && self.is_in_window(clock)
+/// Whether `buy` would be accepted right now: the right pressing, this currency
+/// enabled, and the run selling at this moment (open, and past its drop time if it
+/// has one).
+public fun is_live<Currency>(
+    self: &Listing<Currency>,
+    pressing: &Pressing,
+    clock: &Clock,
+): bool {
+    self.pressing_id == pressing.id() && self.is_enabled() && pressing.is_selling(clock)
 }
 
 /// The price amount (the fixed price, or the floor).
@@ -448,28 +349,41 @@ public fun amount(self: &Price): u64 {
     }
 }
 
+//=== Internal ===
+
+fun is_enabled<Currency>(self: &Listing<Currency>): bool {
+    match (self.state) {
+        ListingState::Enabled => true,
+        ListingState::Disabled => false,
+    }
+}
+
 //=== Test Helpers ===
 
-/// Build an unshared `Listing` on a fresh UID, for tests of `buy` that have no edition to
-/// derive off.
+// One-line derivations of `state()`; see the note in `pressing`. `is_live` is the
+// public one, because it composes both switches and the clock.
+
+#[test_only]
+public fun is_enabled_for_testing<Currency>(self: &Listing<Currency>): bool {
+    self.is_enabled()
+}
+
+#[test_only]
+public fun is_disabled_for_testing<Currency>(self: &Listing<Currency>): bool {
+    !self.is_enabled()
+}
+
+/// Build an unshared `Listing` on a fresh UID, for tests of `buy` that have no shared
+/// pressing to go through.
 #[test_only]
 public fun new_for_testing<Currency>(
     release_id: ID,
-    edition_id: ID,
-    edition_number: u32,
+    pressing_id: ID,
     price: Price,
-    window: Window,
+    state: ListingState,
     ctx: &mut TxContext,
 ): Listing<Currency> {
-    Listing {
-        id: object::new(ctx),
-        release_id,
-        edition_id,
-        edition_number,
-        price,
-        window,
-        sold: 0,
-    }
+    Listing { id: object::new(ctx), release_id, pressing_id, price, state }
 }
 
 #[test_only]

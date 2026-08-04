@@ -1,0 +1,943 @@
+{
+  "id": {
+    "address": "0x93b3b214ad031ef9c340543eeafccac74d6a9232ce9506751fbeccea850a0823",
+    "name": "bps"
+  },
+  "doc": " Basis-points arithmetic with a newtype wrapper.\n\n 1 bps = 0.01%. 10_000 bps = 100%.\n\n Storage-optimal: `BPS` stores a `u16` (2 bytes), the tightest width that\n fits the `[0, 10_000]` range. Apply functions cover every standard\n integer width (`u8` through `u256`); overflow safety on `u8`–`u128` is\n delegated to `std::uX::mul_div` / `mul_div_ceil`, which widen to the\n next-larger type internally. `u256` has no wider type, so the\n multiplication is performed directly and only overflows for amounts\n exceeding `u256::MAX / 10_000` (~1.16e73).",
+  "immediate_dependencies": [
+    {
+      "address": "std",
+      "name": "u128"
+    },
+    {
+      "address": "std",
+      "name": "u16"
+    },
+    {
+      "address": "std",
+      "name": "u32"
+    },
+    {
+      "address": "std",
+      "name": "u64"
+    }
+  ],
+  "attributes": [],
+  "functions": {
+    "new": {
+      "source_index": 0,
+      "index": 0,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "v",
+          "type_": "u16"
+        }
+      ],
+      "return_": [
+        {
+          "Datatype": {
+            "module": {
+              "address": "0x93b3b214ad031ef9c340543eeafccac74d6a9232ce9506751fbeccea850a0823",
+              "name": "bps"
+            },
+            "name": "BPS",
+            "type_arguments": []
+          }
+        }
+      ]
+    },
+    "from_percent": {
+      "source_index": 1,
+      "index": 1,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "pct",
+          "type_": "u8"
+        }
+      ],
+      "return_": [
+        {
+          "Datatype": {
+            "module": {
+              "address": "0x93b3b214ad031ef9c340543eeafccac74d6a9232ce9506751fbeccea850a0823",
+              "name": "bps"
+            },
+            "name": "BPS",
+            "type_arguments": []
+          }
+        }
+      ]
+    },
+    "zero": {
+      "source_index": 2,
+      "index": 2,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [],
+      "return_": [
+        {
+          "Datatype": {
+            "module": {
+              "address": "0x93b3b214ad031ef9c340543eeafccac74d6a9232ce9506751fbeccea850a0823",
+              "name": "bps"
+            },
+            "name": "BPS",
+            "type_arguments": []
+          }
+        }
+      ]
+    },
+    "max": {
+      "source_index": 3,
+      "index": 3,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [],
+      "return_": [
+        {
+          "Datatype": {
+            "module": {
+              "address": "0x93b3b214ad031ef9c340543eeafccac74d6a9232ce9506751fbeccea850a0823",
+              "name": "bps"
+            },
+            "name": "BPS",
+            "type_arguments": []
+          }
+        }
+      ]
+    },
+    "value": {
+      "source_index": 4,
+      "index": 4,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "b",
+          "type_": {
+            "Datatype": {
+              "module": {
+                "address": "0x93b3b214ad031ef9c340543eeafccac74d6a9232ce9506751fbeccea850a0823",
+                "name": "bps"
+              },
+              "name": "BPS",
+              "type_arguments": []
+            }
+          }
+        }
+      ],
+      "return_": [
+        "u16"
+      ]
+    },
+    "is_zero": {
+      "source_index": 6,
+      "index": 5,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "b",
+          "type_": {
+            "Datatype": {
+              "module": {
+                "address": "0x93b3b214ad031ef9c340543eeafccac74d6a9232ce9506751fbeccea850a0823",
+                "name": "bps"
+              },
+              "name": "BPS",
+              "type_arguments": []
+            }
+          }
+        }
+      ],
+      "return_": [
+        "bool"
+      ]
+    },
+    "is_max": {
+      "source_index": 7,
+      "index": 6,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "b",
+          "type_": {
+            "Datatype": {
+              "module": {
+                "address": "0x93b3b214ad031ef9c340543eeafccac74d6a9232ce9506751fbeccea850a0823",
+                "name": "bps"
+              },
+              "name": "BPS",
+              "type_arguments": []
+            }
+          }
+        }
+      ],
+      "return_": [
+        "bool"
+      ]
+    },
+    "add": {
+      "source_index": 8,
+      "index": 7,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "a",
+          "type_": {
+            "Datatype": {
+              "module": {
+                "address": "0x93b3b214ad031ef9c340543eeafccac74d6a9232ce9506751fbeccea850a0823",
+                "name": "bps"
+              },
+              "name": "BPS",
+              "type_arguments": []
+            }
+          }
+        },
+        {
+          "name": "b",
+          "type_": {
+            "Datatype": {
+              "module": {
+                "address": "0x93b3b214ad031ef9c340543eeafccac74d6a9232ce9506751fbeccea850a0823",
+                "name": "bps"
+              },
+              "name": "BPS",
+              "type_arguments": []
+            }
+          }
+        }
+      ],
+      "return_": [
+        {
+          "Datatype": {
+            "module": {
+              "address": "0x93b3b214ad031ef9c340543eeafccac74d6a9232ce9506751fbeccea850a0823",
+              "name": "bps"
+            },
+            "name": "BPS",
+            "type_arguments": []
+          }
+        }
+      ]
+    },
+    "sub": {
+      "source_index": 9,
+      "index": 8,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "a",
+          "type_": {
+            "Datatype": {
+              "module": {
+                "address": "0x93b3b214ad031ef9c340543eeafccac74d6a9232ce9506751fbeccea850a0823",
+                "name": "bps"
+              },
+              "name": "BPS",
+              "type_arguments": []
+            }
+          }
+        },
+        {
+          "name": "b",
+          "type_": {
+            "Datatype": {
+              "module": {
+                "address": "0x93b3b214ad031ef9c340543eeafccac74d6a9232ce9506751fbeccea850a0823",
+                "name": "bps"
+              },
+              "name": "BPS",
+              "type_arguments": []
+            }
+          }
+        }
+      ],
+      "return_": [
+        {
+          "Datatype": {
+            "module": {
+              "address": "0x93b3b214ad031ef9c340543eeafccac74d6a9232ce9506751fbeccea850a0823",
+              "name": "bps"
+            },
+            "name": "BPS",
+            "type_arguments": []
+          }
+        }
+      ]
+    },
+    "complement": {
+      "source_index": 10,
+      "index": 9,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "b",
+          "type_": {
+            "Datatype": {
+              "module": {
+                "address": "0x93b3b214ad031ef9c340543eeafccac74d6a9232ce9506751fbeccea850a0823",
+                "name": "bps"
+              },
+              "name": "BPS",
+              "type_arguments": []
+            }
+          }
+        }
+      ],
+      "return_": [
+        {
+          "Datatype": {
+            "module": {
+              "address": "0x93b3b214ad031ef9c340543eeafccac74d6a9232ce9506751fbeccea850a0823",
+              "name": "bps"
+            },
+            "name": "BPS",
+            "type_arguments": []
+          }
+        }
+      ]
+    },
+    "apply_u8": {
+      "source_index": 11,
+      "index": 10,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "b",
+          "type_": {
+            "Datatype": {
+              "module": {
+                "address": "0x93b3b214ad031ef9c340543eeafccac74d6a9232ce9506751fbeccea850a0823",
+                "name": "bps"
+              },
+              "name": "BPS",
+              "type_arguments": []
+            }
+          }
+        },
+        {
+          "name": "amount",
+          "type_": "u8"
+        }
+      ],
+      "return_": [
+        "u8"
+      ]
+    },
+    "apply_ceil_u8": {
+      "source_index": 12,
+      "index": 11,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "b",
+          "type_": {
+            "Datatype": {
+              "module": {
+                "address": "0x93b3b214ad031ef9c340543eeafccac74d6a9232ce9506751fbeccea850a0823",
+                "name": "bps"
+              },
+              "name": "BPS",
+              "type_arguments": []
+            }
+          }
+        },
+        {
+          "name": "amount",
+          "type_": "u8"
+        }
+      ],
+      "return_": [
+        "u8"
+      ]
+    },
+    "split_u8": {
+      "source_index": 13,
+      "index": 12,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "b",
+          "type_": {
+            "Datatype": {
+              "module": {
+                "address": "0x93b3b214ad031ef9c340543eeafccac74d6a9232ce9506751fbeccea850a0823",
+                "name": "bps"
+              },
+              "name": "BPS",
+              "type_arguments": []
+            }
+          }
+        },
+        {
+          "name": "amount",
+          "type_": "u8"
+        }
+      ],
+      "return_": [
+        "u8",
+        "u8"
+      ]
+    },
+    "apply_u16": {
+      "source_index": 14,
+      "index": 13,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "b",
+          "type_": {
+            "Datatype": {
+              "module": {
+                "address": "0x93b3b214ad031ef9c340543eeafccac74d6a9232ce9506751fbeccea850a0823",
+                "name": "bps"
+              },
+              "name": "BPS",
+              "type_arguments": []
+            }
+          }
+        },
+        {
+          "name": "amount",
+          "type_": "u16"
+        }
+      ],
+      "return_": [
+        "u16"
+      ]
+    },
+    "apply_ceil_u16": {
+      "source_index": 15,
+      "index": 14,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "b",
+          "type_": {
+            "Datatype": {
+              "module": {
+                "address": "0x93b3b214ad031ef9c340543eeafccac74d6a9232ce9506751fbeccea850a0823",
+                "name": "bps"
+              },
+              "name": "BPS",
+              "type_arguments": []
+            }
+          }
+        },
+        {
+          "name": "amount",
+          "type_": "u16"
+        }
+      ],
+      "return_": [
+        "u16"
+      ]
+    },
+    "split_u16": {
+      "source_index": 16,
+      "index": 15,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "b",
+          "type_": {
+            "Datatype": {
+              "module": {
+                "address": "0x93b3b214ad031ef9c340543eeafccac74d6a9232ce9506751fbeccea850a0823",
+                "name": "bps"
+              },
+              "name": "BPS",
+              "type_arguments": []
+            }
+          }
+        },
+        {
+          "name": "amount",
+          "type_": "u16"
+        }
+      ],
+      "return_": [
+        "u16",
+        "u16"
+      ]
+    },
+    "apply_u32": {
+      "source_index": 17,
+      "index": 16,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "b",
+          "type_": {
+            "Datatype": {
+              "module": {
+                "address": "0x93b3b214ad031ef9c340543eeafccac74d6a9232ce9506751fbeccea850a0823",
+                "name": "bps"
+              },
+              "name": "BPS",
+              "type_arguments": []
+            }
+          }
+        },
+        {
+          "name": "amount",
+          "type_": "u32"
+        }
+      ],
+      "return_": [
+        "u32"
+      ]
+    },
+    "apply_ceil_u32": {
+      "source_index": 18,
+      "index": 17,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "b",
+          "type_": {
+            "Datatype": {
+              "module": {
+                "address": "0x93b3b214ad031ef9c340543eeafccac74d6a9232ce9506751fbeccea850a0823",
+                "name": "bps"
+              },
+              "name": "BPS",
+              "type_arguments": []
+            }
+          }
+        },
+        {
+          "name": "amount",
+          "type_": "u32"
+        }
+      ],
+      "return_": [
+        "u32"
+      ]
+    },
+    "split_u32": {
+      "source_index": 19,
+      "index": 18,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "b",
+          "type_": {
+            "Datatype": {
+              "module": {
+                "address": "0x93b3b214ad031ef9c340543eeafccac74d6a9232ce9506751fbeccea850a0823",
+                "name": "bps"
+              },
+              "name": "BPS",
+              "type_arguments": []
+            }
+          }
+        },
+        {
+          "name": "amount",
+          "type_": "u32"
+        }
+      ],
+      "return_": [
+        "u32",
+        "u32"
+      ]
+    },
+    "apply": {
+      "source_index": 20,
+      "index": 19,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "b",
+          "type_": {
+            "Datatype": {
+              "module": {
+                "address": "0x93b3b214ad031ef9c340543eeafccac74d6a9232ce9506751fbeccea850a0823",
+                "name": "bps"
+              },
+              "name": "BPS",
+              "type_arguments": []
+            }
+          }
+        },
+        {
+          "name": "amount",
+          "type_": "u64"
+        }
+      ],
+      "return_": [
+        "u64"
+      ]
+    },
+    "apply_ceil": {
+      "source_index": 21,
+      "index": 20,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "b",
+          "type_": {
+            "Datatype": {
+              "module": {
+                "address": "0x93b3b214ad031ef9c340543eeafccac74d6a9232ce9506751fbeccea850a0823",
+                "name": "bps"
+              },
+              "name": "BPS",
+              "type_arguments": []
+            }
+          }
+        },
+        {
+          "name": "amount",
+          "type_": "u64"
+        }
+      ],
+      "return_": [
+        "u64"
+      ]
+    },
+    "split": {
+      "source_index": 22,
+      "index": 21,
+      "doc": " Splits `amount` by `b`. `taken + remainder == amount` always.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "b",
+          "type_": {
+            "Datatype": {
+              "module": {
+                "address": "0x93b3b214ad031ef9c340543eeafccac74d6a9232ce9506751fbeccea850a0823",
+                "name": "bps"
+              },
+              "name": "BPS",
+              "type_arguments": []
+            }
+          }
+        },
+        {
+          "name": "amount",
+          "type_": "u64"
+        }
+      ],
+      "return_": [
+        "u64",
+        "u64"
+      ]
+    },
+    "apply_u128": {
+      "source_index": 23,
+      "index": 22,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "b",
+          "type_": {
+            "Datatype": {
+              "module": {
+                "address": "0x93b3b214ad031ef9c340543eeafccac74d6a9232ce9506751fbeccea850a0823",
+                "name": "bps"
+              },
+              "name": "BPS",
+              "type_arguments": []
+            }
+          }
+        },
+        {
+          "name": "amount",
+          "type_": "u128"
+        }
+      ],
+      "return_": [
+        "u128"
+      ]
+    },
+    "apply_ceil_u128": {
+      "source_index": 24,
+      "index": 23,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "b",
+          "type_": {
+            "Datatype": {
+              "module": {
+                "address": "0x93b3b214ad031ef9c340543eeafccac74d6a9232ce9506751fbeccea850a0823",
+                "name": "bps"
+              },
+              "name": "BPS",
+              "type_arguments": []
+            }
+          }
+        },
+        {
+          "name": "amount",
+          "type_": "u128"
+        }
+      ],
+      "return_": [
+        "u128"
+      ]
+    },
+    "split_u128": {
+      "source_index": 25,
+      "index": 24,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "b",
+          "type_": {
+            "Datatype": {
+              "module": {
+                "address": "0x93b3b214ad031ef9c340543eeafccac74d6a9232ce9506751fbeccea850a0823",
+                "name": "bps"
+              },
+              "name": "BPS",
+              "type_arguments": []
+            }
+          }
+        },
+        {
+          "name": "amount",
+          "type_": "u128"
+        }
+      ],
+      "return_": [
+        "u128",
+        "u128"
+      ]
+    },
+    "apply_u256": {
+      "source_index": 26,
+      "index": 25,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "b",
+          "type_": {
+            "Datatype": {
+              "module": {
+                "address": "0x93b3b214ad031ef9c340543eeafccac74d6a9232ce9506751fbeccea850a0823",
+                "name": "bps"
+              },
+              "name": "BPS",
+              "type_arguments": []
+            }
+          }
+        },
+        {
+          "name": "amount",
+          "type_": "u256"
+        }
+      ],
+      "return_": [
+        "u256"
+      ]
+    },
+    "apply_ceil_u256": {
+      "source_index": 27,
+      "index": 26,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "b",
+          "type_": {
+            "Datatype": {
+              "module": {
+                "address": "0x93b3b214ad031ef9c340543eeafccac74d6a9232ce9506751fbeccea850a0823",
+                "name": "bps"
+              },
+              "name": "BPS",
+              "type_arguments": []
+            }
+          }
+        },
+        {
+          "name": "amount",
+          "type_": "u256"
+        }
+      ],
+      "return_": [
+        "u256"
+      ]
+    },
+    "split_u256": {
+      "source_index": 28,
+      "index": 27,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "b",
+          "type_": {
+            "Datatype": {
+              "module": {
+                "address": "0x93b3b214ad031ef9c340543eeafccac74d6a9232ce9506751fbeccea850a0823",
+                "name": "bps"
+              },
+              "name": "BPS",
+              "type_arguments": []
+            }
+          }
+        },
+        {
+          "name": "amount",
+          "type_": "u256"
+        }
+      ],
+      "return_": [
+        "u256",
+        "u256"
+      ]
+    },
+    "denominator": {
+      "source_index": 5,
+      "index": 18446744073709551615,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "macro_": true,
+      "type_parameters": [],
+      "parameters": [],
+      "return_": [
+        "u16"
+      ]
+    }
+  },
+  "structs": {
+    "BPS": {
+      "index": 0,
+      "doc": " A basis-points value in `[0, 10_000]`.",
+      "attributes": [],
+      "abilities": [
+        "Copy",
+        "Drop",
+        "Store"
+      ],
+      "type_parameters": [],
+      "fields": {
+        "positional_fields": true,
+        "fields": {
+          "pos0": {
+            "index": 0,
+            "doc": null,
+            "type_": "u16"
+          }
+        }
+      }
+    }
+  },
+  "enums": {}
+}

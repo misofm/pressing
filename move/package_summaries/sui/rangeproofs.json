@@ -1,0 +1,234 @@
+{
+  "id": {
+    "address": "sui",
+    "name": "rangeproofs"
+  },
+  "doc": null,
+  "immediate_dependencies": [
+    {
+      "address": "sui",
+      "name": "group_ops"
+    },
+    {
+      "address": "sui",
+      "name": "ristretto255"
+    }
+  ],
+  "attributes": [],
+  "functions": {
+    "verify_bulletproofs_with_dst_ristretto255": {
+      "source_index": 0,
+      "index": 0,
+      "doc": " Verify a range proof over the Ristretto255 curve that all committed values are in the range [0, 2^bits).\n Currently, the only supported version is 0 which corresponds to the original Bulletproofs construction (https://eprint.iacr.org/2017/1066.pdf).\n In the future, we may add support for newer versions of Bulletproofs, such as Bulletproofs+ or Bulletproofs++.\n\n The format of the proof follows the specifications from https://github.com/dalek-cryptography/bulletproofs/blob/be67b6d5f5ad1c1f54d5511b52e6d645a1313d07/src/range_proof/mod.rs#L59-L76.\n\n The `bits` parameter is the bit length of the range and must be one of 8, 16, 32, or 64.\n\n The `commitments` are Pedersen commitments to the values used in the proof.\n The number of commitments must be a power of two, but if needed, the input to the prover can be padded with trivial commitments to zero.\n The number of commitments times `bits` can be at most 512.\n\n The `dst` is a domain separation tag that is bound into the proof transcript. Provers and\n verifiers must agree on the same `dst` for verification to succeed. It can be at most 64 bytes.\n\n Enabled only on devnet and testnet.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "proof",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "vector": "u8"
+              }
+            ]
+          }
+        },
+        {
+          "name": "bits",
+          "type_": "u8"
+        },
+        {
+          "name": "commitments",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "vector": {
+                  "Datatype": {
+                    "module": {
+                      "address": "sui",
+                      "name": "group_ops"
+                    },
+                    "name": "Element",
+                    "type_arguments": [
+                      {
+                        "phantom": true,
+                        "argument": {
+                          "Datatype": {
+                            "module": {
+                              "address": "sui",
+                              "name": "ristretto255"
+                            },
+                            "name": "G",
+                            "type_arguments": []
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "dst",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "vector": "u8"
+              }
+            ]
+          }
+        },
+        {
+          "name": "version",
+          "type_": "u8"
+        }
+      ],
+      "return_": [
+        "bool"
+      ]
+    },
+    "verify_bulletproofs_ristretto255": {
+      "source_index": 1,
+      "index": 1,
+      "doc": " Disabled. This entry point always aborts; use `verify_bulletproofs_with_dst_ristretto255`\n instead.",
+      "attributes": [
+        {
+          "Parameterized": [
+            "deprecated",
+            [
+              {
+                "Assigned": [
+                  "note",
+                  "Use `verify_bulletproofs_with_dst_ristretto255` instead."
+                ]
+              }
+            ]
+          ]
+        }
+      ],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "_proof",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "vector": "u8"
+              }
+            ]
+          }
+        },
+        {
+          "name": "_bits",
+          "type_": "u8"
+        },
+        {
+          "name": "_commitments",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "vector": {
+                  "Datatype": {
+                    "module": {
+                      "address": "sui",
+                      "name": "group_ops"
+                    },
+                    "name": "Element",
+                    "type_arguments": [
+                      {
+                        "phantom": true,
+                        "argument": {
+                          "Datatype": {
+                            "module": {
+                              "address": "sui",
+                              "name": "ristretto255"
+                            },
+                            "name": "G",
+                            "type_arguments": []
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "_version",
+          "type_": "u8"
+        }
+      ],
+      "return_": [
+        "bool"
+      ]
+    },
+    "verify_bulletproofs_with_dst_ristretto255_internal": {
+      "source_index": 2,
+      "index": 2,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Private",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "proof",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "vector": "u8"
+              }
+            ]
+          }
+        },
+        {
+          "name": "bits",
+          "type_": "u8"
+        },
+        {
+          "name": "commitments",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "vector": {
+                  "vector": "u8"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "dst",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "vector": "u8"
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        "bool"
+      ]
+    }
+  },
+  "structs": {},
+  "enums": {}
+}

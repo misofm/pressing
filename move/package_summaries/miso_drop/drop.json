@@ -1,0 +1,1896 @@
+{
+  "id": {
+    "address": "miso_drop",
+    "name": "drop"
+  },
+  "doc": " A primary record sale — a *Drop*.\n\n A `Drop` is a shared object that mints and sells numbered `Record` copies of a\n release, forwarding each payment to the release's address. Each purchase mints a\n `Record` whose UID is *derived* off the `Drop`'s own UID (keyed by the 1-based\n serial number it was sold at), so every copy is deterministically addressable from\n its drop and can be minted at most once.\n\n # Scarcity is the artist's choice\n\n A drop's terms are three enums, each fixed at creation:\n - `Price` — `Fixed` (pay exactly) or `Floor` (pay at least; overpayment kept);\n - `Supply` — `Uncapped`, or `Capped { max }` (\"1000 records only\");\n - `Window` — `Unbounded { start }`, or `Bounded { start, end }` (\"two weeks only\").\n\n Scarcity is a per-edition decision by the artist, not a protocol stance — and it\n is never a dead end: fans who miss a drop can always be answered with a new\n edition. What a drop never has is an access gate: no allowlists, auctions, or\n raffles — while a drop is live, anyone may buy.\n\n # Editions — one live drop per release\n\n A release sells through at most ONE drop at a time. `new` opens edition `0`;\n `new_edition` opens edition `n + 1` by CONSUMING edition `n` — the predecessor\n shared object is destroyed, so two editions can never sell side by side, and the\n edition sequence is gap-free by construction (you must hold edition `n` to open\n `n + 1`). Because a drop is immutable once created, `new_edition` is also the only\n way to change anything: a new price, a new currency, a fresh run after a sell-out\n or a closed window — each is simply the next edition.\n\n The RELEASE is the parent: drop UIDs are *derived* off the release's UID (via its\n cap-gated `uid_mut` extension surface), keyed by `DropKey(edition)`. Every\n edition's address is therefore computable from the release id alone — and since\n claim markers outlive the objects they name, a destroyed edition's key can never\n be claimed again. The release's UID also carries a `CurrentDropKey → ID` dynamic\n field pointing at the live drop (superseded drops are deleted, so the pointer —\n not address probing — is how clients find the current edition).\n\n # Records\n\n Serial numbers restart at 1 each edition: a record is \"edition `e`, number `n`\n (of `max`)\", and it stamps the `Currency` and the exact amount paid. A record\n from a destroyed edition remains verifiable — `record::is_derived_from` is pure\n address math and does not need the drop object alive.\n\n # Authority\n\n Opening edition 0 needs the release's `ReleaseAdminCap` (enforced by the\n protocol's `release::uid_mut`); opening edition `n + 1` needs the cap AND the\n predecessor drop. Minting is authorized separately: this package presents its\n `MintWitness`, whose type must be on `miso_record`'s `Settings` allowlist. A\n different shop with different mechanics is just another package with its own\n witness — same `Record`, no `miso_record` redeploy.",
+  "immediate_dependencies": [
+    {
+      "address": "miso",
+      "name": "release"
+    },
+    {
+      "address": "miso_record",
+      "name": "record"
+    },
+    {
+      "address": "miso_record",
+      "name": "settings"
+    },
+    {
+      "address": "std",
+      "name": "option"
+    },
+    {
+      "address": "sui",
+      "name": "balance"
+    },
+    {
+      "address": "sui",
+      "name": "clock"
+    },
+    {
+      "address": "sui",
+      "name": "coin"
+    },
+    {
+      "address": "sui",
+      "name": "derived_object"
+    },
+    {
+      "address": "sui",
+      "name": "dynamic_field"
+    },
+    {
+      "address": "sui",
+      "name": "event"
+    },
+    {
+      "address": "sui",
+      "name": "object"
+    },
+    {
+      "address": "sui",
+      "name": "transfer"
+    },
+    {
+      "address": "sui",
+      "name": "tx_context"
+    }
+  ],
+  "attributes": [],
+  "functions": {
+    "new_fixed_price": {
+      "source_index": 0,
+      "index": 0,
+      "doc": " A fixed price: a buyer must pay exactly `amount`.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "amount",
+          "type_": "u64"
+        }
+      ],
+      "return_": [
+        {
+          "Datatype": {
+            "module": {
+              "address": "miso_drop",
+              "name": "drop"
+            },
+            "name": "Price",
+            "type_arguments": []
+          }
+        }
+      ]
+    },
+    "new_floor_price": {
+      "source_index": 1,
+      "index": 1,
+      "doc": " A floor price: a buyer must pay at least `amount`; overpayment is kept.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "amount",
+          "type_": "u64"
+        }
+      ],
+      "return_": [
+        {
+          "Datatype": {
+            "module": {
+              "address": "miso_drop",
+              "name": "drop"
+            },
+            "name": "Price",
+            "type_arguments": []
+          }
+        }
+      ]
+    },
+    "new_uncapped_supply": {
+      "source_index": 2,
+      "index": 2,
+      "doc": " An uncapped supply: the edition never sells out.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [],
+      "return_": [
+        {
+          "Datatype": {
+            "module": {
+              "address": "miso_drop",
+              "name": "drop"
+            },
+            "name": "Supply",
+            "type_arguments": []
+          }
+        }
+      ]
+    },
+    "new_capped_supply": {
+      "source_index": 3,
+      "index": 3,
+      "doc": " A capped supply: the edition sells out after `max` records. `max` must be at\n least 1.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "max",
+          "type_": "u64"
+        }
+      ],
+      "return_": [
+        {
+          "Datatype": {
+            "module": {
+              "address": "miso_drop",
+              "name": "drop"
+            },
+            "name": "Supply",
+            "type_arguments": []
+          }
+        }
+      ]
+    },
+    "new_unbounded_window": {
+      "source_index": 4,
+      "index": 4,
+      "doc": " A window that opens at `start_timestamp_ms` (may be in the future) and never\n closes.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "start_timestamp_ms",
+          "type_": "u64"
+        }
+      ],
+      "return_": [
+        {
+          "Datatype": {
+            "module": {
+              "address": "miso_drop",
+              "name": "drop"
+            },
+            "name": "Window",
+            "type_arguments": []
+          }
+        }
+      ]
+    },
+    "new_bounded_window": {
+      "source_index": 5,
+      "index": 5,
+      "doc": " A window selling only within `[start_timestamp_ms, end_timestamp_ms]`. The close\n must be strictly after the open.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "start_timestamp_ms",
+          "type_": "u64"
+        },
+        {
+          "name": "end_timestamp_ms",
+          "type_": "u64"
+        }
+      ],
+      "return_": [
+        {
+          "Datatype": {
+            "module": {
+              "address": "miso_drop",
+              "name": "drop"
+            },
+            "name": "Window",
+            "type_arguments": []
+          }
+        }
+      ]
+    },
+    "new": {
+      "source_index": 6,
+      "index": 6,
+      "doc": " Create and share a release's FIRST drop — edition `0` — selling copies on the\n given `price` / `supply` / `window` terms. Authorized by the release's admin cap\n (enforced by `release::uid_mut`). The drop is immutable once created; every later\n change (price, currency, a fresh run) is `new_edition`.\n\n Edition 0's key can only ever be claimed once, so a release's edition sequence\n can only ever start here — calling `new` twice for the same release aborts.\n\n Term validity is enforced at construction (`new_capped_supply`,\n `new_bounded_window`); the one check left here is temporal — a bounded window\n must not already be elapsed against the `Clock`.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [
+        {
+          "name": "Currency",
+          "constraints": []
+        }
+      ],
+      "parameters": [
+        {
+          "name": "release",
+          "type_": {
+            "Reference": [
+              true,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso",
+                    "name": "release"
+                  },
+                  "name": "Release",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "cap",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso",
+                    "name": "release"
+                  },
+                  "name": "ReleaseAdminCap",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "price",
+          "type_": {
+            "Datatype": {
+              "module": {
+                "address": "miso_drop",
+                "name": "drop"
+              },
+              "name": "Price",
+              "type_arguments": []
+            }
+          }
+        },
+        {
+          "name": "supply",
+          "type_": {
+            "Datatype": {
+              "module": {
+                "address": "miso_drop",
+                "name": "drop"
+              },
+              "name": "Supply",
+              "type_arguments": []
+            }
+          }
+        },
+        {
+          "name": "window",
+          "type_": {
+            "Datatype": {
+              "module": {
+                "address": "miso_drop",
+                "name": "drop"
+              },
+              "name": "Window",
+              "type_arguments": []
+            }
+          }
+        },
+        {
+          "name": "clock",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "sui",
+                    "name": "clock"
+                  },
+                  "name": "Clock",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": []
+    },
+    "new_edition": {
+      "source_index": 7,
+      "index": 7,
+      "doc": " Open the NEXT edition of a release's drop, CONSUMING the current one. The\n predecessor shared object is destroyed — so at most one drop per release is ever\n live, and this is the one way to change terms: a new price, a new `Currency`, a\n new supply or window. It may be called while the predecessor is still selling (a\n cutover) or after it sold out / closed (a fresh run for fans who missed it).\n\n Records already sold by the predecessor are untouched and remain verifiable\n against its (now deleted) id. Serial numbers restart at 1 for the new edition.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [
+        {
+          "name": "OldCurrency",
+          "constraints": []
+        },
+        {
+          "name": "NewCurrency",
+          "constraints": []
+        }
+      ],
+      "parameters": [
+        {
+          "name": "release",
+          "type_": {
+            "Reference": [
+              true,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso",
+                    "name": "release"
+                  },
+                  "name": "Release",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "old",
+          "type_": {
+            "Datatype": {
+              "module": {
+                "address": "miso_drop",
+                "name": "drop"
+              },
+              "name": "Drop",
+              "type_arguments": [
+                {
+                  "phantom": true,
+                  "argument": {
+                    "NamedTypeParameter": "OldCurrency"
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "cap",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso",
+                    "name": "release"
+                  },
+                  "name": "ReleaseAdminCap",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "price",
+          "type_": {
+            "Datatype": {
+              "module": {
+                "address": "miso_drop",
+                "name": "drop"
+              },
+              "name": "Price",
+              "type_arguments": []
+            }
+          }
+        },
+        {
+          "name": "supply",
+          "type_": {
+            "Datatype": {
+              "module": {
+                "address": "miso_drop",
+                "name": "drop"
+              },
+              "name": "Supply",
+              "type_arguments": []
+            }
+          }
+        },
+        {
+          "name": "window",
+          "type_": {
+            "Datatype": {
+              "module": {
+                "address": "miso_drop",
+                "name": "drop"
+              },
+              "name": "Window",
+              "type_arguments": []
+            }
+          }
+        },
+        {
+          "name": "clock",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "sui",
+                    "name": "clock"
+                  },
+                  "name": "Clock",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": []
+    },
+    "buy": {
+      "source_index": 8,
+      "index": 8,
+      "doc": " Buy one record from a live drop — one inside its window with supply left.\n\n `payment` must satisfy the price (exactly, for `Fixed`; at least, for `Floor`). The\n ENTIRE payment is forwarded to the release's address — under `Floor`, anything paid\n above the floor is kept (a pay-what-you-want tip), not refunded. The sold record's\n number is the 1-based `quantity_sold` count, its UID is derived off the drop, and\n it records the drop's `edition`, the `Currency`, and the amount paid. `settings`\n must authorize this package's `MintWitness`.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [
+        {
+          "name": "Currency",
+          "constraints": []
+        }
+      ],
+      "parameters": [
+        {
+          "name": "self",
+          "type_": {
+            "Reference": [
+              true,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso_drop",
+                    "name": "drop"
+                  },
+                  "name": "Drop",
+                  "type_arguments": [
+                    {
+                      "phantom": true,
+                      "argument": {
+                        "NamedTypeParameter": "Currency"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "payment",
+          "type_": {
+            "Datatype": {
+              "module": {
+                "address": "sui",
+                "name": "coin"
+              },
+              "name": "Coin",
+              "type_arguments": [
+                {
+                  "phantom": true,
+                  "argument": {
+                    "NamedTypeParameter": "Currency"
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "settings",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso_record",
+                    "name": "settings"
+                  },
+                  "name": "Settings",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "clock",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "sui",
+                    "name": "clock"
+                  },
+                  "name": "Clock",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "ctx",
+          "type_": {
+            "Reference": [
+              true,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "sui",
+                    "name": "tx_context"
+                  },
+                  "name": "TxContext",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        {
+          "Datatype": {
+            "module": {
+              "address": "miso_record",
+              "name": "record"
+            },
+            "name": "Record",
+            "type_arguments": []
+          }
+        }
+      ]
+    },
+    "assert_window_not_elapsed": {
+      "source_index": 9,
+      "index": 9,
+      "doc": " A bounded window must not already be elapsed. (Structural validity — the close\n strictly after the open — is enforced at construction by `new_bounded_window`.)",
+      "attributes": [],
+      "visibility": "Private",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "window",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso_drop",
+                    "name": "drop"
+                  },
+                  "name": "Window",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "clock",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "sui",
+                    "name": "clock"
+                  },
+                  "name": "Clock",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": []
+    },
+    "share_drop": {
+      "source_index": 10,
+      "index": 10,
+      "doc": " Claims the edition's derived UID off the release's UID, points the release's\n `CurrentDropKey` at it, emits `DropCreatedEvent`, and shares the drop.\n\n Sequentiality is asserted HERE, at the claim site: edition `n > 0` requires\n edition `n - 1`'s claim marker (markers persist even after a drop is destroyed).\n Together with claim-once, a release's claimed editions always form a gap-free\n prefix `0..k` — independent of what callers exist above.",
+      "attributes": [],
+      "visibility": "Private",
+      "entry": false,
+      "type_parameters": [
+        {
+          "name": "Currency",
+          "constraints": []
+        }
+      ],
+      "parameters": [
+        {
+          "name": "parent",
+          "type_": {
+            "Reference": [
+              true,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "sui",
+                    "name": "object"
+                  },
+                  "name": "UID",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "release_id",
+          "type_": {
+            "Datatype": {
+              "module": {
+                "address": "sui",
+                "name": "object"
+              },
+              "name": "ID",
+              "type_arguments": []
+            }
+          }
+        },
+        {
+          "name": "edition",
+          "type_": "u32"
+        },
+        {
+          "name": "price",
+          "type_": {
+            "Datatype": {
+              "module": {
+                "address": "miso_drop",
+                "name": "drop"
+              },
+              "name": "Price",
+              "type_arguments": []
+            }
+          }
+        },
+        {
+          "name": "supply",
+          "type_": {
+            "Datatype": {
+              "module": {
+                "address": "miso_drop",
+                "name": "drop"
+              },
+              "name": "Supply",
+              "type_arguments": []
+            }
+          }
+        },
+        {
+          "name": "window",
+          "type_": {
+            "Datatype": {
+              "module": {
+                "address": "miso_drop",
+                "name": "drop"
+              },
+              "name": "Window",
+              "type_arguments": []
+            }
+          }
+        }
+      ],
+      "return_": []
+    },
+    "id": {
+      "source_index": 11,
+      "index": 11,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [
+        {
+          "name": "Currency",
+          "constraints": []
+        }
+      ],
+      "parameters": [
+        {
+          "name": "self",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso_drop",
+                    "name": "drop"
+                  },
+                  "name": "Drop",
+                  "type_arguments": [
+                    {
+                      "phantom": true,
+                      "argument": {
+                        "NamedTypeParameter": "Currency"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        {
+          "Datatype": {
+            "module": {
+              "address": "sui",
+              "name": "object"
+            },
+            "name": "ID",
+            "type_arguments": []
+          }
+        }
+      ]
+    },
+    "release_id": {
+      "source_index": 12,
+      "index": 12,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [
+        {
+          "name": "Currency",
+          "constraints": []
+        }
+      ],
+      "parameters": [
+        {
+          "name": "self",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso_drop",
+                    "name": "drop"
+                  },
+                  "name": "Drop",
+                  "type_arguments": [
+                    {
+                      "phantom": true,
+                      "argument": {
+                        "NamedTypeParameter": "Currency"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        {
+          "Datatype": {
+            "module": {
+              "address": "sui",
+              "name": "object"
+            },
+            "name": "ID",
+            "type_arguments": []
+          }
+        }
+      ]
+    },
+    "edition": {
+      "source_index": 13,
+      "index": 13,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [
+        {
+          "name": "Currency",
+          "constraints": []
+        }
+      ],
+      "parameters": [
+        {
+          "name": "self",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso_drop",
+                    "name": "drop"
+                  },
+                  "name": "Drop",
+                  "type_arguments": [
+                    {
+                      "phantom": true,
+                      "argument": {
+                        "NamedTypeParameter": "Currency"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        "u32"
+      ]
+    },
+    "quantity_sold": {
+      "source_index": 14,
+      "index": 14,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [
+        {
+          "name": "Currency",
+          "constraints": []
+        }
+      ],
+      "parameters": [
+        {
+          "name": "self",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso_drop",
+                    "name": "drop"
+                  },
+                  "name": "Drop",
+                  "type_arguments": [
+                    {
+                      "phantom": true,
+                      "argument": {
+                        "NamedTypeParameter": "Currency"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        "u64"
+      ]
+    },
+    "price": {
+      "source_index": 15,
+      "index": 15,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [
+        {
+          "name": "Currency",
+          "constraints": []
+        }
+      ],
+      "parameters": [
+        {
+          "name": "self",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso_drop",
+                    "name": "drop"
+                  },
+                  "name": "Drop",
+                  "type_arguments": [
+                    {
+                      "phantom": true,
+                      "argument": {
+                        "NamedTypeParameter": "Currency"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        "u64"
+      ]
+    },
+    "supply": {
+      "source_index": 16,
+      "index": 16,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [
+        {
+          "name": "Currency",
+          "constraints": []
+        }
+      ],
+      "parameters": [
+        {
+          "name": "self",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso_drop",
+                    "name": "drop"
+                  },
+                  "name": "Drop",
+                  "type_arguments": [
+                    {
+                      "phantom": true,
+                      "argument": {
+                        "NamedTypeParameter": "Currency"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        {
+          "Datatype": {
+            "module": {
+              "address": "miso_drop",
+              "name": "drop"
+            },
+            "name": "Supply",
+            "type_arguments": []
+          }
+        }
+      ]
+    },
+    "window": {
+      "source_index": 17,
+      "index": 17,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [
+        {
+          "name": "Currency",
+          "constraints": []
+        }
+      ],
+      "parameters": [
+        {
+          "name": "self",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso_drop",
+                    "name": "drop"
+                  },
+                  "name": "Drop",
+                  "type_arguments": [
+                    {
+                      "phantom": true,
+                      "argument": {
+                        "NamedTypeParameter": "Currency"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        {
+          "Datatype": {
+            "module": {
+              "address": "miso_drop",
+              "name": "drop"
+            },
+            "name": "Window",
+            "type_arguments": []
+          }
+        }
+      ]
+    },
+    "max_supply": {
+      "source_index": 18,
+      "index": 18,
+      "doc": " Flat projection of `supply`: the cap, or `none` if uncapped.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [
+        {
+          "name": "Currency",
+          "constraints": []
+        }
+      ],
+      "parameters": [
+        {
+          "name": "self",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso_drop",
+                    "name": "drop"
+                  },
+                  "name": "Drop",
+                  "type_arguments": [
+                    {
+                      "phantom": true,
+                      "argument": {
+                        "NamedTypeParameter": "Currency"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        {
+          "Datatype": {
+            "module": {
+              "address": "std",
+              "name": "option"
+            },
+            "name": "Option",
+            "type_arguments": [
+              {
+                "phantom": false,
+                "argument": "u64"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "start_timestamp_ms": {
+      "source_index": 19,
+      "index": 19,
+      "doc": " Flat projection of `window`: when the drop opens.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [
+        {
+          "name": "Currency",
+          "constraints": []
+        }
+      ],
+      "parameters": [
+        {
+          "name": "self",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso_drop",
+                    "name": "drop"
+                  },
+                  "name": "Drop",
+                  "type_arguments": [
+                    {
+                      "phantom": true,
+                      "argument": {
+                        "NamedTypeParameter": "Currency"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        "u64"
+      ]
+    },
+    "end_timestamp_ms": {
+      "source_index": 20,
+      "index": 20,
+      "doc": " Flat projection of `window`: the close, or `none` if unbounded.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [
+        {
+          "name": "Currency",
+          "constraints": []
+        }
+      ],
+      "parameters": [
+        {
+          "name": "self",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso_drop",
+                    "name": "drop"
+                  },
+                  "name": "Drop",
+                  "type_arguments": [
+                    {
+                      "phantom": true,
+                      "argument": {
+                        "NamedTypeParameter": "Currency"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        {
+          "Datatype": {
+            "module": {
+              "address": "std",
+              "name": "option"
+            },
+            "name": "Option",
+            "type_arguments": [
+              {
+                "phantom": false,
+                "argument": "u64"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "is_sold_out": {
+      "source_index": 21,
+      "index": 21,
+      "doc": " Whether the drop has sold every one of its `Capped { max }` records (always\n `false` for an uncapped drop).",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [
+        {
+          "name": "Currency",
+          "constraints": []
+        }
+      ],
+      "parameters": [
+        {
+          "name": "self",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso_drop",
+                    "name": "drop"
+                  },
+                  "name": "Drop",
+                  "type_arguments": [
+                    {
+                      "phantom": true,
+                      "argument": {
+                        "NamedTypeParameter": "Currency"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        "bool"
+      ]
+    },
+    "is_live": {
+      "source_index": 22,
+      "index": 22,
+      "doc": " Whether `buy` would be accepted right now: inside the window and not sold out.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [
+        {
+          "name": "Currency",
+          "constraints": []
+        }
+      ],
+      "parameters": [
+        {
+          "name": "self",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso_drop",
+                    "name": "drop"
+                  },
+                  "name": "Drop",
+                  "type_arguments": [
+                    {
+                      "phantom": true,
+                      "argument": {
+                        "NamedTypeParameter": "Currency"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "clock",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "sui",
+                    "name": "clock"
+                  },
+                  "name": "Clock",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        "bool"
+      ]
+    },
+    "current_drop_id": {
+      "source_index": 23,
+      "index": 23,
+      "doc": " The `ID` of a release's live drop, or `none` if the release has never dropped.\n (There is always at most one: `new_edition` destroys the predecessor.)",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "release",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso",
+                    "name": "release"
+                  },
+                  "name": "Release",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        {
+          "Datatype": {
+            "module": {
+              "address": "std",
+              "name": "option"
+            },
+            "name": "Option",
+            "type_arguments": [
+              {
+                "phantom": false,
+                "argument": {
+                  "Datatype": {
+                    "module": {
+                      "address": "sui",
+                      "name": "object"
+                    },
+                    "name": "ID",
+                    "type_arguments": []
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "amount": {
+      "source_index": 24,
+      "index": 24,
+      "doc": " The price amount (the fixed price, or the floor).",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "self",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso_drop",
+                    "name": "drop"
+                  },
+                  "name": "Price",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        "u64"
+      ]
+    }
+  },
+  "structs": {
+    "DropKey": {
+      "index": 0,
+      "doc": " Key for deriving a `Drop`'s UID off its RELEASE's UID: the edition number. Each\n release owns an independent `0, 1, 2, …` edition sequence. Claim markers persist\n on the release even after a drop is destroyed, so an edition key can never be\n reused.",
+      "attributes": [],
+      "abilities": [
+        "Copy",
+        "Drop",
+        "Store"
+      ],
+      "type_parameters": [],
+      "fields": {
+        "positional_fields": true,
+        "fields": {
+          "pos0": {
+            "index": 0,
+            "doc": null,
+            "type_": "u32"
+          }
+        }
+      }
+    },
+    "CurrentDropKey": {
+      "index": 1,
+      "doc": " Dynamic-field key on the RELEASE's UID holding the `ID` of its live drop.\n Maintained by `new` / `new_edition`; needed because superseded drops are deleted,\n so the current edition cannot be found by probing derived addresses.",
+      "attributes": [],
+      "abilities": [
+        "Copy",
+        "Drop",
+        "Store"
+      ],
+      "type_parameters": [],
+      "fields": {
+        "positional_fields": true,
+        "fields": {
+          "dummy_field": {
+            "index": 0,
+            "type_": "bool"
+          }
+        }
+      }
+    },
+    "MintWitness": {
+      "index": 2,
+      "doc": " Witness authorizing `miso_record` mints. Constructible only inside this package,\n and minted only on `buy`'s paid path — so possessing a value of it proves a valid\n purchase happened. `miso_record::Settings` must authorize this *type* to mint.",
+      "attributes": [],
+      "abilities": [
+        "Drop"
+      ],
+      "type_parameters": [],
+      "fields": {
+        "positional_fields": false,
+        "fields": {
+          "dummy_field": {
+            "index": 0,
+            "type_": "bool"
+          }
+        }
+      }
+    },
+    "Drop": {
+      "index": 3,
+      "doc": " A primary sale of `Record`s for one edition of a release. Immutable once created;\n to change anything, open the next edition with `new_edition`.",
+      "attributes": [],
+      "abilities": [
+        "Key"
+      ],
+      "type_parameters": [
+        {
+          "phantom": true,
+          "name": "Currency",
+          "constraints": []
+        }
+      ],
+      "fields": {
+        "positional_fields": false,
+        "fields": {
+          "id": {
+            "index": 0,
+            "doc": null,
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "sui",
+                  "name": "object"
+                },
+                "name": "UID",
+                "type_arguments": []
+              }
+            }
+          },
+          "release_id": {
+            "index": 1,
+            "doc": " The release these records are copies of.",
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "sui",
+                  "name": "object"
+                },
+                "name": "ID",
+                "type_arguments": []
+              }
+            }
+          },
+          "edition": {
+            "index": 2,
+            "doc": " Which edition of the release this is (0 = first drop).",
+            "type_": "u32"
+          },
+          "price": {
+            "index": 3,
+            "doc": " How much a buyer must pay per record.",
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "miso_drop",
+                  "name": "drop"
+                },
+                "name": "Price",
+                "type_arguments": []
+              }
+            }
+          },
+          "supply": {
+            "index": 4,
+            "doc": " How many records this edition may ever sell.",
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "miso_drop",
+                  "name": "drop"
+                },
+                "name": "Supply",
+                "type_arguments": []
+              }
+            }
+          },
+          "quantity_sold": {
+            "index": 5,
+            "doc": " Records sold so far; also the most recently sold record's number.",
+            "type_": "u64"
+          },
+          "window": {
+            "index": 6,
+            "doc": " When this edition sells.",
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "miso_drop",
+                  "name": "drop"
+                },
+                "name": "Window",
+                "type_arguments": []
+              }
+            }
+          }
+        }
+      }
+    },
+    "DropCreatedEvent": {
+      "index": 4,
+      "doc": null,
+      "attributes": [],
+      "abilities": [
+        "Copy",
+        "Drop"
+      ],
+      "type_parameters": [
+        {
+          "phantom": true,
+          "name": "Currency",
+          "constraints": []
+        }
+      ],
+      "fields": {
+        "positional_fields": false,
+        "fields": {
+          "drop_id": {
+            "index": 0,
+            "doc": null,
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "sui",
+                  "name": "object"
+                },
+                "name": "ID",
+                "type_arguments": []
+              }
+            }
+          },
+          "release_id": {
+            "index": 1,
+            "doc": null,
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "sui",
+                  "name": "object"
+                },
+                "name": "ID",
+                "type_arguments": []
+              }
+            }
+          },
+          "edition": {
+            "index": 2,
+            "doc": null,
+            "type_": "u32"
+          },
+          "price": {
+            "index": 3,
+            "doc": null,
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "miso_drop",
+                  "name": "drop"
+                },
+                "name": "Price",
+                "type_arguments": []
+              }
+            }
+          },
+          "supply": {
+            "index": 4,
+            "doc": null,
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "miso_drop",
+                  "name": "drop"
+                },
+                "name": "Supply",
+                "type_arguments": []
+              }
+            }
+          },
+          "window": {
+            "index": 5,
+            "doc": null,
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "miso_drop",
+                  "name": "drop"
+                },
+                "name": "Window",
+                "type_arguments": []
+              }
+            }
+          }
+        }
+      }
+    },
+    "RecordSoldEvent": {
+      "index": 5,
+      "doc": null,
+      "attributes": [],
+      "abilities": [
+        "Copy",
+        "Drop"
+      ],
+      "type_parameters": [
+        {
+          "phantom": true,
+          "name": "Currency",
+          "constraints": []
+        }
+      ],
+      "fields": {
+        "positional_fields": false,
+        "fields": {
+          "drop_id": {
+            "index": 0,
+            "doc": null,
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "sui",
+                  "name": "object"
+                },
+                "name": "ID",
+                "type_arguments": []
+              }
+            }
+          },
+          "release_id": {
+            "index": 1,
+            "doc": null,
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "sui",
+                  "name": "object"
+                },
+                "name": "ID",
+                "type_arguments": []
+              }
+            }
+          },
+          "edition": {
+            "index": 2,
+            "doc": null,
+            "type_": "u32"
+          },
+          "record_id": {
+            "index": 3,
+            "doc": null,
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "sui",
+                  "name": "object"
+                },
+                "name": "ID",
+                "type_arguments": []
+              }
+            }
+          },
+          "number": {
+            "index": 4,
+            "doc": null,
+            "type_": "u64"
+          },
+          "paid": {
+            "index": 5,
+            "doc": null,
+            "type_": "u64"
+          },
+          "buyer": {
+            "index": 6,
+            "doc": null,
+            "type_": "address"
+          }
+        }
+      }
+    }
+  },
+  "enums": {
+    "Price": {
+      "index": 0,
+      "doc": " Pricing policy for a drop.",
+      "attributes": [],
+      "abilities": [
+        "Copy",
+        "Drop",
+        "Store"
+      ],
+      "type_parameters": [],
+      "variants": {
+        "Fixed": {
+          "index": 0,
+          "doc": " Pay exactly `amount`.",
+          "fields": {
+            "positional_fields": false,
+            "fields": {
+              "amount": {
+                "index": 0,
+                "doc": null,
+                "type_": "u64"
+              }
+            }
+          }
+        },
+        "Floor": {
+          "index": 1,
+          "doc": " Pay at least `amount`; overpayment is forwarded to the release, not refunded.",
+          "fields": {
+            "positional_fields": false,
+            "fields": {
+              "amount": {
+                "index": 0,
+                "doc": null,
+                "type_": "u64"
+              }
+            }
+          }
+        }
+      }
+    },
+    "Supply": {
+      "index": 1,
+      "doc": " Supply policy for a drop.",
+      "attributes": [],
+      "abilities": [
+        "Copy",
+        "Drop",
+        "Store"
+      ],
+      "type_parameters": [],
+      "variants": {
+        "Uncapped": {
+          "index": 0,
+          "doc": " No quantity limit — the edition never sells out.",
+          "fields": {
+            "positional_fields": false,
+            "fields": {}
+          }
+        },
+        "Capped": {
+          "index": 1,
+          "doc": " Sells out after `max` records.",
+          "fields": {
+            "positional_fields": false,
+            "fields": {
+              "max": {
+                "index": 0,
+                "doc": null,
+                "type_": "u64"
+              }
+            }
+          }
+        }
+      }
+    },
+    "Window": {
+      "index": 2,
+      "doc": " When a drop sells. `buy` rejects purchases outside the window.",
+      "attributes": [],
+      "abilities": [
+        "Copy",
+        "Drop",
+        "Store"
+      ],
+      "type_parameters": [],
+      "variants": {
+        "Unbounded": {
+          "index": 0,
+          "doc": " Opens at `start_timestamp_ms` (Unix ms; may be in the future — a scheduled\n drop) and never closes.",
+          "fields": {
+            "positional_fields": false,
+            "fields": {
+              "start_timestamp_ms": {
+                "index": 0,
+                "doc": null,
+                "type_": "u64"
+              }
+            }
+          }
+        },
+        "Bounded": {
+          "index": 1,
+          "doc": " Sells only within `[start_timestamp_ms, end_timestamp_ms]` (Unix ms).",
+          "fields": {
+            "positional_fields": false,
+            "fields": {
+              "start_timestamp_ms": {
+                "index": 0,
+                "doc": null,
+                "type_": "u64"
+              },
+              "end_timestamp_ms": {
+                "index": 1,
+                "doc": null,
+                "type_": "u64"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

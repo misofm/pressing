@@ -1,0 +1,1134 @@
+{
+  "id": {
+    "address": "miso",
+    "name": "composition"
+  },
+  "doc": " Represents a musical composition (song, instrumental work) in Miso.\n Compositions are the underlying written works that recordings are based on.\n Each composition has its own share token for ownership distribution.\n\n ### Key Features:\n\n - Share token initialization with fixed supply (10M tokens, 6 decimals)\n - State machine: Initialized -> Published (embedded fields immutable after\n   publish; dynamic fields remain extensible via `uid_mut`)\n - Deterministic addresses via derived object pattern\n\n Attribution (credits) is intentionally NOT part of core: it is\n display-oriented, varies across platforms, and is never read by the\n economics. It lives in a first-party credits extension attached via\n `uid_mut`, so core takes no dependency on an identity package and core\n publish enforces no attribution.\n\n ### Lifecycle and trust model\n\n A composition is `key`-only with no `drop`: a fresh `Initialized` object\n cannot be transferred, wrapped, publicly shared, or discarded, and its only\n by-value consumer is `publish`. Create-and-publish is therefore atomic by\n construction — an `Initialized` composition cannot outlive its creating\n transaction, and every composition that exists on-chain is `Published` and\n shared. There is deliberately no keep function; staged building must fit\n one transaction.\n\n `uid_mut` works in any lifecycle state and is permanent root over ALL\n dynamic fields on the object — including fields attached by other\n extensions. \"Immutable after publish\" covers the embedded fields only;\n extension-layer data stays admin-mutable in perpetuity. This is the\n designed extension surface, and it is the one trust assumption that never\n expires: integrators should model the cap holder as able to mutate or\n delete any extension data, forever.",
+  "immediate_dependencies": [
+    {
+      "address": "0x6d9119870f97969ffb4d2b86ef4e876e42d983b01e0bfa7e39c0d32e6c9b5cb0",
+      "name": "share"
+    },
+    {
+      "address": "0x93b3b214ad031ef9c340543eeafccac74d6a9232ce9506751fbeccea850a0823",
+      "name": "bps"
+    },
+    {
+      "address": "std",
+      "name": "string"
+    },
+    {
+      "address": "sui",
+      "name": "balance"
+    },
+    {
+      "address": "sui",
+      "name": "clock"
+    },
+    {
+      "address": "sui",
+      "name": "coin"
+    },
+    {
+      "address": "sui",
+      "name": "coin_registry"
+    },
+    {
+      "address": "sui",
+      "name": "derived_object"
+    },
+    {
+      "address": "sui",
+      "name": "event"
+    },
+    {
+      "address": "sui",
+      "name": "object"
+    },
+    {
+      "address": "sui",
+      "name": "transfer"
+    },
+    {
+      "address": "sui",
+      "name": "tx_context"
+    }
+  ],
+  "attributes": [],
+  "functions": {
+    "new": {
+      "source_index": 0,
+      "index": 0,
+      "doc": " Creates a new composition with the given title and royalty rate.\n The royalty rate must not exceed `MAX_ROYALTY_RATE_BPS`; there is no floor,\n so 0% is permitted (e.g. a generative recording with no authored composition).\n Initializes share tokens (10M supply, 6 decimals) and returns:\n - The composition object\n - Admin capability for the owner\n - Initial share token balance",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [
+        {
+          "name": "CompositionShare",
+          "constraints": []
+        }
+      ],
+      "parameters": [
+        {
+          "name": "title",
+          "type_": {
+            "Datatype": {
+              "module": {
+                "address": "std",
+                "name": "string"
+              },
+              "name": "String",
+              "type_arguments": []
+            }
+          }
+        },
+        {
+          "name": "royalty_rate_bps",
+          "type_": "u16"
+        },
+        {
+          "name": "share_currency",
+          "type_": {
+            "Reference": [
+              true,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "sui",
+                    "name": "coin_registry"
+                  },
+                  "name": "Currency",
+                  "type_arguments": [
+                    {
+                      "phantom": true,
+                      "argument": {
+                        "NamedTypeParameter": "CompositionShare"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "share_treasury_cap",
+          "type_": {
+            "Datatype": {
+              "module": {
+                "address": "sui",
+                "name": "coin"
+              },
+              "name": "TreasuryCap",
+              "type_arguments": [
+                {
+                  "phantom": true,
+                  "argument": {
+                    "NamedTypeParameter": "CompositionShare"
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "ctx",
+          "type_": {
+            "Reference": [
+              true,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "sui",
+                    "name": "tx_context"
+                  },
+                  "name": "TxContext",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        {
+          "Datatype": {
+            "module": {
+              "address": "miso",
+              "name": "composition"
+            },
+            "name": "Composition",
+            "type_arguments": [
+              {
+                "phantom": true,
+                "argument": {
+                  "NamedTypeParameter": "CompositionShare"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "Datatype": {
+            "module": {
+              "address": "miso",
+              "name": "composition"
+            },
+            "name": "CompositionAdminCap",
+            "type_arguments": [
+              {
+                "phantom": true,
+                "argument": {
+                  "NamedTypeParameter": "CompositionShare"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "Datatype": {
+            "module": {
+              "address": "sui",
+              "name": "balance"
+            },
+            "name": "Balance",
+            "type_arguments": [
+              {
+                "phantom": true,
+                "argument": {
+                  "NamedTypeParameter": "CompositionShare"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "publish": {
+      "source_index": 1,
+      "index": 1,
+      "doc": " Publishes the composition, making its embedded fields immutable.\n Required State: Initialized\n\n Note: core enforces no attribution requirement — credits live in the credits\n extension and may be attached before or after publish via `uid_mut`.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [
+        {
+          "name": "CompositionShare",
+          "constraints": []
+        }
+      ],
+      "parameters": [
+        {
+          "name": "self",
+          "type_": {
+            "Datatype": {
+              "module": {
+                "address": "miso",
+                "name": "composition"
+              },
+              "name": "Composition",
+              "type_arguments": [
+                {
+                  "phantom": true,
+                  "argument": {
+                    "NamedTypeParameter": "CompositionShare"
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "_",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso",
+                    "name": "composition"
+                  },
+                  "name": "CompositionAdminCap",
+                  "type_arguments": [
+                    {
+                      "phantom": true,
+                      "argument": {
+                        "NamedTypeParameter": "CompositionShare"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "clock",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "sui",
+                    "name": "clock"
+                  },
+                  "name": "Clock",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": []
+    },
+    "set_royalty_rate": {
+      "source_index": 2,
+      "index": 2,
+      "doc": " Sets the royalty rate this composition earns from each recording.\n Must not exceed `MAX_ROYALTY_RATE_BPS` (there is no floor; 0% is allowed),\n and only after a full epoch has elapsed since the last change — a rate set in epoch\n N is changeable from epoch N+2 onward, so every rate is in effect for at\n least one complete epoch. The rate can be changed in any lifecycle state,\n including after publishing — because each recording snapshots the rate\n when it is created, a change only affects recordings created afterward\n (existing recordings keep the rate they captured).",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [
+        {
+          "name": "CompositionShare",
+          "constraints": []
+        }
+      ],
+      "parameters": [
+        {
+          "name": "self",
+          "type_": {
+            "Reference": [
+              true,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso",
+                    "name": "composition"
+                  },
+                  "name": "Composition",
+                  "type_arguments": [
+                    {
+                      "phantom": true,
+                      "argument": {
+                        "NamedTypeParameter": "CompositionShare"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "_",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso",
+                    "name": "composition"
+                  },
+                  "name": "CompositionAdminCap",
+                  "type_arguments": [
+                    {
+                      "phantom": true,
+                      "argument": {
+                        "NamedTypeParameter": "CompositionShare"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "royalty_rate_bps",
+          "type_": "u16"
+        },
+        {
+          "name": "ctx",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "sui",
+                    "name": "tx_context"
+                  },
+                  "name": "TxContext",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": []
+    },
+    "id": {
+      "source_index": 3,
+      "index": 3,
+      "doc": " Returns the composition's object ID.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [
+        {
+          "name": "CompositionShare",
+          "constraints": []
+        }
+      ],
+      "parameters": [
+        {
+          "name": "self",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso",
+                    "name": "composition"
+                  },
+                  "name": "Composition",
+                  "type_arguments": [
+                    {
+                      "phantom": true,
+                      "argument": {
+                        "NamedTypeParameter": "CompositionShare"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        {
+          "Datatype": {
+            "module": {
+              "address": "sui",
+              "name": "object"
+            },
+            "name": "ID",
+            "type_arguments": []
+          }
+        }
+      ]
+    },
+    "state": {
+      "source_index": 4,
+      "index": 4,
+      "doc": " Returns the current lifecycle state.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [
+        {
+          "name": "CompositionShare",
+          "constraints": []
+        }
+      ],
+      "parameters": [
+        {
+          "name": "self",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso",
+                    "name": "composition"
+                  },
+                  "name": "Composition",
+                  "type_arguments": [
+                    {
+                      "phantom": true,
+                      "argument": {
+                        "NamedTypeParameter": "CompositionShare"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        {
+          "Datatype": {
+            "module": {
+              "address": "miso",
+              "name": "composition"
+            },
+            "name": "CompositionState",
+            "type_arguments": []
+          }
+        }
+      ]
+    },
+    "is_initialized_state": {
+      "source_index": 5,
+      "index": 5,
+      "doc": " Returns true if the composition is in the Initialized state.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [
+        {
+          "name": "CompositionShare",
+          "constraints": []
+        }
+      ],
+      "parameters": [
+        {
+          "name": "self",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso",
+                    "name": "composition"
+                  },
+                  "name": "Composition",
+                  "type_arguments": [
+                    {
+                      "phantom": true,
+                      "argument": {
+                        "NamedTypeParameter": "CompositionShare"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        "bool"
+      ]
+    },
+    "is_published_state": {
+      "source_index": 6,
+      "index": 6,
+      "doc": " Returns true if the composition is in the Published state.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [
+        {
+          "name": "CompositionShare",
+          "constraints": []
+        }
+      ],
+      "parameters": [
+        {
+          "name": "self",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso",
+                    "name": "composition"
+                  },
+                  "name": "Composition",
+                  "type_arguments": [
+                    {
+                      "phantom": true,
+                      "argument": {
+                        "NamedTypeParameter": "CompositionShare"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        "bool"
+      ]
+    },
+    "title": {
+      "source_index": 7,
+      "index": 7,
+      "doc": " Returns the primary title.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [
+        {
+          "name": "CompositionShare",
+          "constraints": []
+        }
+      ],
+      "parameters": [
+        {
+          "name": "self",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso",
+                    "name": "composition"
+                  },
+                  "name": "Composition",
+                  "type_arguments": [
+                    {
+                      "phantom": true,
+                      "argument": {
+                        "NamedTypeParameter": "CompositionShare"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        {
+          "Reference": [
+            false,
+            {
+              "Datatype": {
+                "module": {
+                  "address": "std",
+                  "name": "string"
+                },
+                "name": "String",
+                "type_arguments": []
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "royalty_rate": {
+      "source_index": 8,
+      "index": 8,
+      "doc": " Returns the royalty rate this composition earns from each recording.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [
+        {
+          "name": "CompositionShare",
+          "constraints": []
+        }
+      ],
+      "parameters": [
+        {
+          "name": "self",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso",
+                    "name": "composition"
+                  },
+                  "name": "Composition",
+                  "type_arguments": [
+                    {
+                      "phantom": true,
+                      "argument": {
+                        "NamedTypeParameter": "CompositionShare"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        {
+          "Datatype": {
+            "module": {
+              "address": "0x93b3b214ad031ef9c340543eeafccac74d6a9232ce9506751fbeccea850a0823",
+              "name": "bps"
+            },
+            "name": "BPS",
+            "type_arguments": []
+          }
+        }
+      ]
+    },
+    "royalty_rate_last_changed_epoch": {
+      "source_index": 9,
+      "index": 9,
+      "doc": " Returns the epoch in which the royalty rate was last changed.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [
+        {
+          "name": "CompositionShare",
+          "constraints": []
+        }
+      ],
+      "parameters": [
+        {
+          "name": "self",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso",
+                    "name": "composition"
+                  },
+                  "name": "Composition",
+                  "type_arguments": [
+                    {
+                      "phantom": true,
+                      "argument": {
+                        "NamedTypeParameter": "CompositionShare"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        "u64"
+      ]
+    },
+    "uid": {
+      "source_index": 10,
+      "index": 10,
+      "doc": " Returns a reference to the composition's UID for reading dynamic fields.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [
+        {
+          "name": "CompositionShare",
+          "constraints": []
+        }
+      ],
+      "parameters": [
+        {
+          "name": "self",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso",
+                    "name": "composition"
+                  },
+                  "name": "Composition",
+                  "type_arguments": [
+                    {
+                      "phantom": true,
+                      "argument": {
+                        "NamedTypeParameter": "CompositionShare"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        {
+          "Reference": [
+            false,
+            {
+              "Datatype": {
+                "module": {
+                  "address": "sui",
+                  "name": "object"
+                },
+                "name": "UID",
+                "type_arguments": []
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "uid_mut": {
+      "source_index": 11,
+      "index": 11,
+      "doc": " Returns a mutable reference to the composition's UID.\n Requires the admin capability. Works in any lifecycle state — dynamic\n fields are the extension surface and stay admin-mutable after publish;\n only the embedded fields are frozen. The reference is root over every\n dynamic field on the object, including fields attached by other\n extensions.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [
+        {
+          "name": "CompositionShare",
+          "constraints": []
+        }
+      ],
+      "parameters": [
+        {
+          "name": "self",
+          "type_": {
+            "Reference": [
+              true,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso",
+                    "name": "composition"
+                  },
+                  "name": "Composition",
+                  "type_arguments": [
+                    {
+                      "phantom": true,
+                      "argument": {
+                        "NamedTypeParameter": "CompositionShare"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "_",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso",
+                    "name": "composition"
+                  },
+                  "name": "CompositionAdminCap",
+                  "type_arguments": [
+                    {
+                      "phantom": true,
+                      "argument": {
+                        "NamedTypeParameter": "CompositionShare"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        {
+          "Reference": [
+            true,
+            {
+              "Datatype": {
+                "module": {
+                  "address": "sui",
+                  "name": "object"
+                },
+                "name": "UID",
+                "type_arguments": []
+              }
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "structs": {
+    "Composition": {
+      "index": 0,
+      "doc": " A musical composition representing the underlying written work.\n The phantom CompositionShare type parameter links to the share token.",
+      "attributes": [],
+      "abilities": [
+        "Key"
+      ],
+      "type_parameters": [
+        {
+          "phantom": true,
+          "name": "CompositionShare",
+          "constraints": []
+        }
+      ],
+      "fields": {
+        "positional_fields": false,
+        "fields": {
+          "id": {
+            "index": 0,
+            "doc": " Unique identifier for this composition.",
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "sui",
+                  "name": "object"
+                },
+                "name": "UID",
+                "type_arguments": []
+              }
+            }
+          },
+          "state": {
+            "index": 1,
+            "doc": " Current lifecycle state.",
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "miso",
+                  "name": "composition"
+                },
+                "name": "CompositionState",
+                "type_arguments": []
+              }
+            }
+          },
+          "title": {
+            "index": 2,
+            "doc": " Primary title of the composition.",
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "std",
+                  "name": "string"
+                },
+                "name": "String",
+                "type_arguments": []
+              }
+            }
+          },
+          "royalty_rate": {
+            "index": 3,
+            "doc": " Royalty rate this composition earns from each recording's revenue,\n paired with the epoch it was last changed in. Each rate stays in\n effect for at least one full epoch.",
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "miso",
+                  "name": "composition"
+                },
+                "name": "CompositionRoyaltyRate",
+                "type_arguments": []
+              }
+            }
+          }
+        }
+      }
+    },
+    "CompositionAdminCap": {
+      "index": 1,
+      "doc": " Capability that authorizes modifications to a specific composition.\n Initialized when a composition is registered and transferred to the owner.\n Address is derived from the composition for client-side discoverability.",
+      "attributes": [],
+      "abilities": [
+        "Key",
+        "Store"
+      ],
+      "type_parameters": [
+        {
+          "phantom": true,
+          "name": "CompositionShare",
+          "constraints": []
+        }
+      ],
+      "fields": {
+        "positional_fields": false,
+        "fields": {
+          "id": {
+            "index": 0,
+            "doc": " Unique identifier for this capability.",
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "sui",
+                  "name": "object"
+                },
+                "name": "UID",
+                "type_arguments": []
+              }
+            }
+          }
+        }
+      }
+    },
+    "CompositionRoyaltyRate": {
+      "index": 2,
+      "doc": " The royalty rate paired with the epoch in which it was last set.\n A rate change requires a full epoch to have elapsed since the last change —\n a rate set in epoch N is changeable from epoch N+2 onward — so every rate\n is in effect for at least one complete epoch. This bounds how a rate change\n can surprise a recording creator and makes bait-and-revert oscillation\n uneconomical: once a change lands, it is pinned in full public view for the\n remainder of that epoch plus the entire next one.",
+      "attributes": [],
+      "abilities": [
+        "Copy",
+        "Drop",
+        "Store"
+      ],
+      "type_parameters": [],
+      "fields": {
+        "positional_fields": true,
+        "fields": {
+          "pos0": {
+            "index": 0,
+            "doc": null,
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "0x93b3b214ad031ef9c340543eeafccac74d6a9232ce9506751fbeccea850a0823",
+                  "name": "bps"
+                },
+                "name": "BPS",
+                "type_arguments": []
+              }
+            }
+          },
+          "pos1": {
+            "index": 1,
+            "doc": null,
+            "type_": "u64"
+          }
+        }
+      }
+    },
+    "CompositionAdminCapKey": {
+      "index": 3,
+      "doc": " Key for deriving the admin capability's deterministic address from the composition.",
+      "attributes": [],
+      "abilities": [
+        "Copy",
+        "Drop",
+        "Store"
+      ],
+      "type_parameters": [],
+      "fields": {
+        "positional_fields": true,
+        "fields": {
+          "dummy_field": {
+            "index": 0,
+            "type_": "bool"
+          }
+        }
+      }
+    },
+    "CompositionPublishedEvent": {
+      "index": 4,
+      "doc": " Emitted once when a composition is published. A pure pointer: it carries the\n composition's identity. A composition's membership is immutable after\n publishing, so an indexer treats this as a signal to fetch the full object by\n `composition_id`; all indexed data — including the publish timestamp — lives\n in the object itself (the royalty rate may change later and is tracked\n separately via `CompositionRoyaltySetEvent`).",
+      "attributes": [],
+      "abilities": [
+        "Copy",
+        "Drop"
+      ],
+      "type_parameters": [
+        {
+          "phantom": true,
+          "name": "CompositionShare",
+          "constraints": []
+        }
+      ],
+      "fields": {
+        "positional_fields": false,
+        "fields": {
+          "composition_id": {
+            "index": 0,
+            "doc": null,
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "sui",
+                  "name": "object"
+                },
+                "name": "ID",
+                "type_arguments": []
+              }
+            }
+          }
+        }
+      }
+    },
+    "CompositionRoyaltySetEvent": {
+      "index": 5,
+      "doc": " Emitted when the composition's royalty rate is set or changed. The\n composition is identified by the event's `CompositionShare` phantom.",
+      "attributes": [],
+      "abilities": [
+        "Copy",
+        "Drop"
+      ],
+      "type_parameters": [
+        {
+          "phantom": true,
+          "name": "CompositionShare",
+          "constraints": []
+        }
+      ],
+      "fields": {
+        "positional_fields": false,
+        "fields": {
+          "royalty_rate_bps": {
+            "index": 0,
+            "doc": null,
+            "type_": "u16"
+          }
+        }
+      }
+    }
+  },
+  "enums": {
+    "CompositionState": {
+      "index": 0,
+      "doc": " Lifecycle state of a composition.",
+      "attributes": [],
+      "abilities": [
+        "Copy",
+        "Drop",
+        "Store"
+      ],
+      "type_parameters": [],
+      "variants": {
+        "Initialized": {
+          "index": 0,
+          "doc": " Composition is initialized but not published.",
+          "fields": {
+            "positional_fields": false,
+            "fields": {}
+          }
+        },
+        "Published": {
+          "index": 1,
+          "doc": " Composition is published and immutable. Includes publication timestamp.",
+          "fields": {
+            "positional_fields": true,
+            "fields": {
+              "pos0": {
+                "index": 0,
+                "doc": " Timestamp (ms) when published.",
+                "type_": "u64"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

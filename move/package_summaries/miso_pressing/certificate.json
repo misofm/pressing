@@ -1,0 +1,403 @@
+{
+  "id": {
+    "address": "miso_pressing",
+    "name": "certificate"
+  },
+  "doc": " The pressing's certificate on a record.\n\n One struct holds everything the sale fixed about a copy: where it sits in the run,\n and what was paid for it. These were two dynamic fields — a certificate and a\n receipt — and separating them bought nothing: both are written once, in the same\n transaction, by the same call, and neither is meaningful without the other.\n\n A serial is only meaningful inside the sequence that issued it — a different\n production package counts from 1 again — so the number never travels alone. It\n does not need to carry its pressing's id to say which sequence it means: a release\n has exactly one pressing, at a derived address, so `pressing::derive_id(\n record.release_id())` recomputes it from the record itself. Storing it would be\n storing a value that is pure arithmetic on values already present.\n\n `record_id` is the exception — it is stored precisely *because* it is redundant.\n `record::uid_mut` is open by design, so a third-party extension can add and remove\n its own fields on a record. It cannot forge or detach this one (the key is\n constructible only in this module), but a record's certificate is only worth\n trusting if it is *this* record's. `is_for` is that check, and\n `pressing::verify_record` is the full one.",
+  "immediate_dependencies": [
+    {
+      "address": "miso_record",
+      "name": "record"
+    },
+    {
+      "address": "std",
+      "name": "option"
+    },
+    {
+      "address": "std",
+      "name": "type_name"
+    },
+    {
+      "address": "sui",
+      "name": "dynamic_field"
+    },
+    {
+      "address": "sui",
+      "name": "object"
+    }
+  ],
+  "attributes": [],
+  "functions": {
+    "attach": {
+      "source_index": 0,
+      "index": 0,
+      "doc": " Stamp the record with its certificate. Called once by `pressing::mint_next`, the\n single path every record takes into being — same transaction as the mint itself.",
+      "attributes": [],
+      "visibility": "Package",
+      "entry": false,
+      "type_parameters": [
+        {
+          "name": "Currency",
+          "constraints": []
+        }
+      ],
+      "parameters": [
+        {
+          "name": "record",
+          "type_": {
+            "Reference": [
+              true,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso_record",
+                    "name": "record"
+                  },
+                  "name": "Record",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "number",
+          "type_": "u64"
+        },
+        {
+          "name": "purchase_price",
+          "type_": "u64"
+        }
+      ],
+      "return_": []
+    },
+    "of": {
+      "source_index": 1,
+      "index": 1,
+      "doc": " The certificate on `record`, or `none` for a record minted by some other package.\n The only way to read the field, since only this module can construct its key.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "record",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso_record",
+                    "name": "record"
+                  },
+                  "name": "Record",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        {
+          "Datatype": {
+            "module": {
+              "address": "std",
+              "name": "option"
+            },
+            "name": "Option",
+            "type_arguments": [
+              {
+                "phantom": false,
+                "argument": {
+                  "Datatype": {
+                    "module": {
+                      "address": "miso_pressing",
+                      "name": "certificate"
+                    },
+                    "name": "Certificate",
+                    "type_arguments": []
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "is_for": {
+      "source_index": 2,
+      "index": 2,
+      "doc": " Whether this certificate was stamped on `record`. The guard against a certificate\n lifted onto a record it does not describe; `pressing::verify_record` adds the\n address-math half.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "self",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso_pressing",
+                    "name": "certificate"
+                  },
+                  "name": "Certificate",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "record",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso_record",
+                    "name": "record"
+                  },
+                  "name": "Record",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        "bool"
+      ]
+    },
+    "record_id": {
+      "source_index": 3,
+      "index": 3,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "self",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso_pressing",
+                    "name": "certificate"
+                  },
+                  "name": "Certificate",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        {
+          "Datatype": {
+            "module": {
+              "address": "sui",
+              "name": "object"
+            },
+            "name": "ID",
+            "type_arguments": []
+          }
+        }
+      ]
+    },
+    "number": {
+      "source_index": 4,
+      "index": 4,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "self",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso_pressing",
+                    "name": "certificate"
+                  },
+                  "name": "Certificate",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        "u64"
+      ]
+    },
+    "purchase_currency": {
+      "source_index": 5,
+      "index": 5,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "self",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso_pressing",
+                    "name": "certificate"
+                  },
+                  "name": "Certificate",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        {
+          "Datatype": {
+            "module": {
+              "address": "std",
+              "name": "type_name"
+            },
+            "name": "TypeName",
+            "type_arguments": []
+          }
+        }
+      ]
+    },
+    "purchase_price": {
+      "source_index": 6,
+      "index": 6,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "self",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso_pressing",
+                    "name": "certificate"
+                  },
+                  "name": "Certificate",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        "u64"
+      ]
+    }
+  },
+  "structs": {
+    "CertificateKey": {
+      "index": 0,
+      "doc": " Key for the `Certificate` dynamic field on a record. Constructible only inside\n this module — written exactly once, at mint, and never removable by anyone else.",
+      "attributes": [],
+      "abilities": [
+        "Copy",
+        "Drop",
+        "Store"
+      ],
+      "type_parameters": [],
+      "fields": {
+        "positional_fields": true,
+        "fields": {
+          "dummy_field": {
+            "index": 0,
+            "type_": "bool"
+          }
+        }
+      }
+    },
+    "Certificate": {
+      "index": 1,
+      "doc": " A record's position in its pressing's run, and the terms it sold on.",
+      "attributes": [],
+      "abilities": [
+        "Copy",
+        "Drop",
+        "Store"
+      ],
+      "type_parameters": [],
+      "fields": {
+        "positional_fields": false,
+        "fields": {
+          "record_id": {
+            "index": 0,
+            "doc": " The record this certificate was stamped on. Redundant by construction, and\n stored anyway so a holder can prove the certificate has not been moved onto a\n different record — see the module doc.",
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "sui",
+                  "name": "object"
+                },
+                "name": "ID",
+                "type_arguments": []
+              }
+            }
+          },
+          "number": {
+            "index": 1,
+            "doc": " Position in the pressing's run (1-based).",
+            "type_": "u64"
+          },
+          "purchase_currency": {
+            "index": 2,
+            "doc": " The coin type the buyer paid in.",
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "std",
+                  "name": "type_name"
+                },
+                "name": "TypeName",
+                "type_arguments": []
+              }
+            }
+          },
+          "purchase_price": {
+            "index": 3,
+            "doc": " The exact amount paid. Under a floor price this includes any tip above it.",
+            "type_": "u64"
+          }
+        }
+      }
+    }
+  },
+  "enums": {}
+}

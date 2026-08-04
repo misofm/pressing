@@ -1,0 +1,184 @@
+{
+  "id": {
+    "address": "miso",
+    "name": "disc"
+  },
+  "doc": " Represents a disc within a release, containing an ordered list of tracks.\n Multi-disc releases (like double albums) are modeled as multiple Disc objects.\n\n A disc is a pure partition of the release's tracklist — it carries no name\n of its own. A disc title (\"Disc 2: Live at Budokan\") is presentation with\n more than one correct rendering, so it lives in the metadata extension on\n the release, like all display data. Note the digest consequence: the\n release digest commits to the flattened track order, not to where disc\n boundaries fall (see `release`'s module docs on consent scope).\n\n Artwork is intentionally NOT part of core: it is display metadata whose\n format evolves over time (static → animated → future formats), so it lives\n in the `cover_art` extension on the release (an album-level cover plus\n per-track overrides) rather than frozen in an immutable struct here.",
+  "immediate_dependencies": [
+    {
+      "address": "miso",
+      "name": "track"
+    }
+  ],
+  "attributes": [],
+  "functions": {
+    "new": {
+      "source_index": 0,
+      "index": 0,
+      "doc": " Creates a new disc from a vector of tracks.\n Aborts if more than 50 tracks are provided.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "tracks",
+          "type_": {
+            "vector": {
+              "Datatype": {
+                "module": {
+                  "address": "miso",
+                  "name": "track"
+                },
+                "name": "Track",
+                "type_arguments": []
+              }
+            }
+          }
+        }
+      ],
+      "return_": [
+        {
+          "Datatype": {
+            "module": {
+              "address": "miso",
+              "name": "disc"
+            },
+            "name": "Disc",
+            "type_arguments": []
+          }
+        }
+      ]
+    },
+    "tracks": {
+      "source_index": 1,
+      "index": 1,
+      "doc": " Returns a reference to all tracks on this disc.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "self",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso",
+                    "name": "disc"
+                  },
+                  "name": "Disc",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        {
+          "Reference": [
+            false,
+            {
+              "vector": {
+                "Datatype": {
+                  "module": {
+                    "address": "miso",
+                    "name": "track"
+                  },
+                  "name": "Track",
+                  "type_arguments": []
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "tracks_mut": {
+      "source_index": 2,
+      "index": 2,
+      "doc": " Returns a mutable reference to the tracks vector.\n Used internally for track assignment during release creation.",
+      "attributes": [],
+      "visibility": "Package",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "self",
+          "type_": {
+            "Reference": [
+              true,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso",
+                    "name": "disc"
+                  },
+                  "name": "Disc",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        {
+          "Reference": [
+            true,
+            {
+              "vector": {
+                "Datatype": {
+                  "module": {
+                    "address": "miso",
+                    "name": "track"
+                  },
+                  "name": "Track",
+                  "type_arguments": []
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "structs": {
+    "Disc": {
+      "index": 0,
+      "doc": " A disc containing an ordered list of tracks.",
+      "attributes": [],
+      "abilities": [
+        "Drop",
+        "Store"
+      ],
+      "type_parameters": [],
+      "fields": {
+        "positional_fields": false,
+        "fields": {
+          "tracks": {
+            "index": 0,
+            "doc": " Ordered list of tracks on this disc.",
+            "type_": {
+              "vector": {
+                "Datatype": {
+                  "module": {
+                    "address": "miso",
+                    "name": "track"
+                  },
+                  "name": "Track",
+                  "type_arguments": []
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "enums": {}
+}

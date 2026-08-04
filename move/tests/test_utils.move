@@ -2,14 +2,14 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #[test_only]
-module miso_drop::test_utils;
+module miso_pressing::test_utils;
 
 use miso::release::{Self, Release, ReleaseAdminCap};
-use miso_drop::edition::MintWitness;
+use miso_pressing::pressing::MintWitness;
 use miso_record::settings::{Self, Settings, SettingsAdminCap};
 use sui::clock::{Self, Clock};
 
-/// A second currency, for testing an edition listed in more than one.
+/// A second currency, for testing a pressing listed in more than one.
 public struct USDX has drop {}
 
 public fun id(addr: address): ID {
