@@ -148,6 +148,8 @@ public struct PressingOpenedEvent has copy, drop {
     state: PressingState,
 }
 
+/// The pressing's new run-wide state, emitted for both cap-authorized changes and the
+/// clock-authorized `Scheduled` to `Active` transition on the first sale.
 public struct PressingStateChangedEvent has copy, drop {
     pressing_id: ID,
     state: PressingState,
@@ -306,6 +308,7 @@ public fun supply(self: &Pressing): u64 {
     self.supply
 }
 
+#[test_only]
 public fun state(self: &Pressing): PressingState {
     self.state
 }
@@ -332,14 +335,11 @@ public fun pressing_admin_cap_pressing_id(cap: &PressingAdminCap): ID {
 /// Whether `record` is genuinely the copy its certificate claims it is, checked from
 /// chain state alone and without needing the `Pressing` object.
 ///
-/// Two independent bindings must agree: the certificate must have been stamped on
-/// *this* record (`certificate::is_for`, the guard against a certificate moved by a
-/// third-party extension through the record's open `uid_mut`), and the record must sit
-/// at exactly the address its number derives to off its release's pressing. The
-/// certificate is the readable form of what the address already proves.
+/// The record must sit at exactly the address its certificate number derives to off
+/// its release's pressing. The certificate is the readable form of what the address
+/// already proves.
 public fun verify_record(record: &Record): bool {
     certificate::of(record).is_some_and!(|cert| {
-        cert.is_for(record) &&
         record::derive_id(derive_id(record.release_id()), cert.number()) == record.id()
     })
 }
@@ -351,6 +351,16 @@ public fun verify_record(record: &Record): bool {
 // rather than calling a view — so on chain they would be surface with no caller.
 // `is_selling` is the exception that stays public: it is the composed question `buy`
 // asks, and duplicating that match is exactly the drift a shared view prevents.
+
+#[test_only]
+public fun opened_event_fields(event: &PressingOpenedEvent): (ID, ID, PressingState) {
+    (event.pressing_id, event.release_id, event.state)
+}
+
+#[test_only]
+public fun state_changed_event_fields(event: &PressingStateChangedEvent): (ID, PressingState) {
+    (event.pressing_id, event.state)
+}
 
 #[test_only]
 public fun is_scheduled(self: &Pressing): bool {

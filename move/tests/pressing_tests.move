@@ -10,6 +10,7 @@ use miso_pressing::test_utils::{a_release, authorized_settings, clock_at, id};
 use miso_record::record;
 use miso_record::settings;
 use std::unit_test::{assert_eq, destroy};
+use sui::event;
 use sui::sui::SUI;
 use sui::test_scenario as ts;
 
@@ -42,6 +43,48 @@ fun new_derives_the_pressing_and_its_cap_off_the_release() {
     destroy(cap);
     destroy(admin);
     sc.end();
+}
+
+#[test]
+fun events_capture_opening_and_every_state_transition() {
+    let mut ctx = tx_context::new_from_hint(@0xA, 0, 0, 0, 0);
+    let (cfg, settings_admin) = authorized_settings(&mut ctx);
+    let clk = clock_at(100, &mut ctx);
+    let (mut rel, cap) = a_release(&mut ctx);
+    let release_id = rel.id();
+    let scheduled = pressing::new_scheduled_state(100);
+
+    let (mut p, admin) = pressing::new(&mut rel, &cap, scheduled);
+    let pressing_id = p.id();
+
+    let opened = event::events_by_type<pressing::PressingOpenedEvent>();
+    assert_eq!(opened.length(), 1);
+    let (opened_pressing_id, opened_release_id, opened_state) =
+        pressing::opened_event_fields(&opened[0]);
+    assert_eq!(opened_pressing_id, pressing_id);
+    assert_eq!(opened_release_id, release_id);
+    assert_eq!(opened_state, scheduled);
+
+    // The first sale settles Scheduled to Active, then an explicit pause emits the
+    // next transition. Event order is the state history an indexer will replay.
+    let record = p.mint_next<SUI>(&cfg, 0, &clk, &ctx);
+    p.set_state(&admin, pressing::new_paused_state());
+
+    let changed = event::events_by_type<pressing::PressingStateChangedEvent>();
+    assert_eq!(changed.length(), 2);
+    let (active_pressing_id, active_state) = pressing::state_changed_event_fields(&changed[0]);
+    assert_eq!(active_pressing_id, pressing_id);
+    assert_eq!(active_state, pressing::new_active_state());
+    let (paused_pressing_id, paused_state) = pressing::state_changed_event_fields(&changed[1]);
+    assert_eq!(paused_pressing_id, pressing_id);
+    assert_eq!(paused_state, pressing::new_paused_state());
+
+    destroy(record);
+    p.destroy_for_testing(admin);
+    destroy(rel);
+    destroy(cap);
+    settings::destroy_for_testing(cfg, settings_admin);
+    clk.destroy_for_testing();
 }
 
 //=== The number sequence ===
@@ -104,16 +147,7 @@ fun the_certificate_carries_the_number_and_the_terms_it_sold_on() {
     assert_eq!(c.purchase_price(), 42);
     assert_eq!(c.purchase_currency(), std::type_name::with_defining_ids<SUI>());
 
-    // The certificate names the record it was stamped on, so a holder can tell it has
-    // not been lifted onto a different one through the record's open `uid_mut`.
-    assert_eq!(c.record_id(), r.id());
-    assert!(c.is_for(&r));
-
-    let other = p.mint_next<SUI>(&cfg, 42, &clk, &ctx);
-    assert!(!c.is_for(&other));
-
     destroy(r);
-    destroy(other);
     p.destroy_for_testing(admin);
     settings::destroy_for_testing(cfg, settings_admin);
     clk.destroy_for_testing();
@@ -133,10 +167,10 @@ fun verify_record_checks_the_certificate_against_the_address_math() {
     assert!(pressing::verify_record(&r));
 
     // A record from a pressing that is not its release's does not — the address math
-    // catches it even though the certificate itself is genuine and unmoved.
+    // catches it even though the record has a genuine certificate.
     let (mut rogue, rogue_admin) = pressing::new_for_testing(rel.id(), &mut ctx);
     let fake = rogue.mint_next<SUI>(&cfg, 10, &clk, &ctx);
-    assert!(certificate::of(&fake).destroy_some().is_for(&fake));
+    assert!(certificate::of(&fake).is_some());
     assert!(!pressing::verify_record(&fake));
 
     destroy(r);

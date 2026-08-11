@@ -44,8 +44,16 @@ Release
   the offer changes *in place* (`set_price`, `set_state`), keeping its address and its
   identity through every change. Repricing cannot catch a buyer out — a `Fixed` buyer
   pays exactly, so a stale payment aborts against a new price, and a `Floor` buyer never
-  pays more than the coin they sent. The whole payment forwards to the release's
-  address.
+  pays more than the balance they sent. The whole payment forwards to the release's
+  address. `RecordSoldEvent` snapshots both the accepted price and the amount paid, so
+  an indexer can distinguish fixed sales from floor sales and compute tips without
+  replaying price changes.
+
+- **Payment is a `Balance<Currency>`, not a `Coin<Currency>`.** The money arrives from
+  wherever the PTB got it — a withdrawal off the buyer's accumulator, a
+  `coin::into_balance`, a split — and leaves immediately for the release's address via
+  `balance::send_funds`. Nothing in that path needs an object id or an owner, so `buy`
+  takes the bare value and never mints a coin just to unwrap it.
 
 - **Two switches, and the schedule is run-wide.** The pressing walks
   `Scheduled { start } → Active → Paused → Active`, checked in `mint_next` so no sale
@@ -79,15 +87,13 @@ Release
 - **One certificate, on the record.** A number is only meaningful inside the sequence
   that issued it, and what a copy sold for is a fact about the same sale — so they are
   one field, written once: `mint_next` stamps
-  `Certificate { record_id, number, purchase_currency, purchase_price }` in the
+  `Certificate { number, purchase_currency, purchase_price }` in the
   transaction that presses the record (`certificate::of(&record)`). It does not store
-  its pressing's id, because a release has exactly one pressing at a derived address —
-  `pressing::derive_id(record.release_id())` recomputes it. `record_id` is stored
-  *because* it is redundant: `record::uid_mut` is open, so a third-party extension can
-  add fields to a record, and `certificate::is_for` proves this certificate has not been
-  lifted onto a record it does not describe. `pressing::verify_record` checks both that
-  and the address math. The key is constructible only inside this package, so the field
-  can be neither forged nor detached.
+  its pressing's or record's id: a release has exactly one pressing at a derived
+  address, and the record's id derives from that pressing plus the certificate number.
+  `pressing::verify_record` recomputes that address and checks it against the record.
+  The key is constructible only inside this package, so the field can be neither
+  forged nor detached.
 
 - **Two caps, split along the money.** Opening a pressing needs the release's
   `ReleaseAdminCap` (the protocol's `release::uid_mut` enforces it) and hands back a
@@ -126,6 +132,7 @@ buy after the moment flips the run to `Active` on its way through.
 Then, per sale:
 
 ```move
+// `payment` is a Balance<SUI> — off the buyer's accumulator, or `coin.into_balance()`.
 let record = listing.buy(&mut pressing, payment, &settings, &clock, ctx);
 ```
 
@@ -179,5 +186,15 @@ miso_record = { local = "../../miso-record/move" }
 ```bash
 cd move && sui move test
 ```
+
+## Testnet deployment
+
+- Immutable `miso_pressing`: `0xe9c134a5c2d263a8e9893e6439f7c797bc9e7f65bc34e99610d53c1c6e7a631b`
+- Immutable `miso_record`: `0x2f0e3cf7257f7ba6ee1109c741f0ccc39f44c2da610052d165e7b514c1149fd2`
+- Shared record `Settings`: `0xbc8468ea6fae4a1a0ba8f0dd2554fa75d2d3e1bff7537f866ad7b4b2f8d96e86`
+- `SettingsAdminCap`: `0xfe6996468cd9a91c833d753df218cd311b3a8fa58c9085aac5104dcdca964c5a`
+- Immutable `miso`: `0x5bb3ec642b1f7debd8bc2acbc16232abe893844d5978431d1cc0fbdddad73b97`
+- Shared `ReleaseRegistry`: `0x3f202b6f89cf635f54bd7ddee7a21e73c77b88a10f1fc451571e9e931997e8d6`
+- `MintWitness` authorization transaction: `2M2AcrcddNVAzDkDCrYqr7yALLXvMqSuV5wqh8s5Va9a`
 
 License: Apache-2.0

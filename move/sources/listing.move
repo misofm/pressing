@@ -25,7 +25,15 @@
 /// `PressingAdminCap` (`set_price`) — repricing is an edit, not a teardown — and a
 /// change cannot catch a buyer out: a `Fixed` buyer pays *exactly*, so a stale
 /// payment aborts against a new price, and a `Floor` buyer never pays more than the
-/// coin they sent.
+/// balance they sent.
+///
+/// Payment is a `Balance<Currency>`, never a `Coin<Currency>`. A coin is a wrapper an
+/// object id, an owner, and a wrapping/unwrapping round trip — that this path has no
+/// use for: the money comes in from wherever the PTB got it (a withdrawal off the
+/// buyer's accumulator, a `coin::into_balance`, a split of some larger balance) and
+/// goes straight back out to the release's address via `balance::send_funds`. Taking
+/// the bare value means `buy` never mints an object just to destroy it, and never
+/// forces the caller to make one either.
 ///
 /// # Two switches
 ///
@@ -45,15 +53,16 @@
 /// What the buyer paid is not part of the record — it is a fact about the *sale* — so
 /// it rides out on the record's `Certificate`, stamped by `pressing::mint_next`
 /// alongside the number. One field, written once, in the transaction that pressed the
-/// record.
+/// record. `RecordSoldEvent` also snapshots both the accepted `Price` and the amount
+/// paid, so an indexer can distinguish fixed sales from floor sales and compute tips
+/// without replaying listing state.
 module miso_pressing::listing;
 
 use miso_pressing::pressing::{Pressing, PressingAdminCap};
 use miso_record::record::Record;
 use miso_record::settings::Settings;
-use sui::balance;
+use sui::balance::{Self, Balance};
 use sui::clock::Clock;
-use sui::coin::Coin;
 use sui::derived_object;
 use sui::event::emit;
 
@@ -98,6 +107,7 @@ public enum ListingState has copy, drop, store {
 
 //=== Events ===
 
+/// A currency listing's initial identity, terms, and state.
 public struct ListingOpenedEvent<phantom Currency> has copy, drop {
     listing_id: ID,
     pressing_id: ID,
@@ -106,22 +116,29 @@ public struct ListingOpenedEvent<phantom Currency> has copy, drop {
     state: ListingState,
 }
 
+/// The accepted offer and resulting record for one sale. `Currency` is carried in the
+/// event type, while `price` and `paid` preserve the ask and the actual payment.
 public struct RecordSoldEvent<phantom Currency> has copy, drop {
     listing_id: ID,
     pressing_id: ID,
     release_id: ID,
     record_id: ID,
     number: u64,
+    /// The offer accepted by this sale. Together with `paid`, this distinguishes a
+    /// fixed-price sale from a floor-price sale and makes any tip directly computable.
+    price: Price,
     paid: u64,
     buyer: address,
 }
 
+/// A currency listing's new enabled/disabled state.
 public struct ListingStateChangedEvent<phantom Currency> has copy, drop {
     listing_id: ID,
     pressing_id: ID,
     state: ListingState,
 }
 
+/// A currency listing's new standing price.
 public struct ListingPriceChangedEvent<phantom Currency> has copy, drop {
     listing_id: ID,
     pressing_id: ID,
@@ -202,19 +219,21 @@ public fun new<Currency>(
 
 /// Buy one record: pay this listing's price, take the next number out of the pressing.
 ///
-/// `payment` must satisfy the price (exactly, for `Fixed`; at least, for `Floor`).
-/// The ENTIRE payment forwards to the release's address — under `Floor`, anything
-/// above the floor is kept as a tip, not refunded. The record's number is the
-/// pressing's next 1-based value, shared with every other currency selling the same
-/// run, and its UID is derived off the pressing. The sale's terms ride out on the
-/// record's `Certificate`. `settings` must authorize this package's `MintWitness`.
+/// `payment` is a bare `Balance<Currency>` and must satisfy the price (exactly, for
+/// `Fixed`; at least, for `Floor`). The ENTIRE payment forwards to the release's
+/// address — under `Floor`, anything above the floor is kept as a tip, not refunded.
+/// The record's number is the pressing's next 1-based value, shared with every other
+/// currency selling the same run, and its UID is derived off the pressing. The sale's
+/// terms ride out on the record's `Certificate`. `settings` must authorize this
+/// package's `MintWitness`.
 ///
 /// Both switches must be open: this listing `Enabled`, checked here, and the run
 /// selling at this moment, checked in `pressing::mint_next`.
+#[allow(lint(prefer_mut_tx_context))]
 public fun buy<Currency>(
     self: &mut Listing<Currency>,
     pressing: &mut Pressing,
-    payment: Coin<Currency>,
+    payment: Balance<Currency>,
     settings: &Settings,
     clock: &Clock,
     ctx: &TxContext,
@@ -232,7 +251,7 @@ public fun buy<Currency>(
     // release / royalty layer redeems + splits it downstream. A free listing (price 0)
     // skips the send so we never open a zero-value accumulator slot.
     if (paid > 0) {
-        balance::send_funds(payment.into_balance(), self.release_id.to_address());
+        balance::send_funds(payment, self.release_id.to_address());
     } else {
         payment.destroy_zero();
     };
@@ -248,6 +267,7 @@ public fun buy<Currency>(
         record_id: record.id(),
         // mint_next just advanced the counter to this record's number.
         number: pressing.supply(),
+        price: self.price,
         paid,
         buyer: ctx.sender(),
     });
@@ -362,6 +382,43 @@ fun is_enabled<Currency>(self: &Listing<Currency>): bool {
 
 // One-line derivations of `state()`; see the note in `pressing`. `is_live` is the
 // public one, because it composes both switches and the clock.
+
+#[test_only]
+public fun opened_event_fields<Currency>(
+    event: &ListingOpenedEvent<Currency>,
+): (ID, ID, ID, Price, ListingState) {
+    (event.listing_id, event.pressing_id, event.release_id, event.price, event.state)
+}
+
+#[test_only]
+public fun sold_event_fields<Currency>(
+    event: &RecordSoldEvent<Currency>,
+): (ID, ID, ID, ID, u64, Price, u64, address) {
+    (
+        event.listing_id,
+        event.pressing_id,
+        event.release_id,
+        event.record_id,
+        event.number,
+        event.price,
+        event.paid,
+        event.buyer,
+    )
+}
+
+#[test_only]
+public fun state_changed_event_fields<Currency>(
+    event: &ListingStateChangedEvent<Currency>,
+): (ID, ID, ListingState) {
+    (event.listing_id, event.pressing_id, event.state)
+}
+
+#[test_only]
+public fun price_changed_event_fields<Currency>(
+    event: &ListingPriceChangedEvent<Currency>,
+): (ID, ID, Price) {
+    (event.listing_id, event.pressing_id, event.price)
+}
 
 #[test_only]
 public fun is_enabled_for_testing<Currency>(self: &Listing<Currency>): bool {

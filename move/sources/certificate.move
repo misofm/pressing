@@ -14,13 +14,6 @@
 /// has exactly one pressing, at a derived address, so `pressing::derive_id(
 /// record.release_id())` recomputes it from the record itself. Storing it would be
 /// storing a value that is pure arithmetic on values already present.
-///
-/// `record_id` is the exception — it is stored precisely *because* it is redundant.
-/// `record::uid_mut` is open by design, so a third-party extension can add and remove
-/// its own fields on a record. It cannot forge or detach this one (the key is
-/// constructible only in this module), but a record's certificate is only worth
-/// trusting if it is *this* record's. `is_for` is that check, and
-/// `pressing::verify_record` is the full one.
 module miso_pressing::certificate;
 
 use miso_record::record::Record;
@@ -35,13 +28,9 @@ public struct CertificateKey() has copy, drop, store;
 
 /// A record's position in its pressing's run, and the terms it sold on.
 public struct Certificate has copy, drop, store {
-    /// The record this certificate was stamped on. Redundant by construction, and
-    /// stored anyway so a holder can prove the certificate has not been moved onto a
-    /// different record — see the module doc.
-    record_id: ID,
     /// Position in the pressing's run (1-based).
     number: u64,
-    /// The coin type the buyer paid in.
+    /// The currency type the buyer paid in.
     purchase_currency: TypeName,
     /// The exact amount paid. Under a floor price this includes any tip above it.
     purchase_price: u64,
@@ -52,12 +41,10 @@ public struct Certificate has copy, drop, store {
 /// Stamp the record with its certificate. Called once by `pressing::mint_next`, the
 /// single path every record takes into being — same transaction as the mint itself.
 public(package) fun attach<Currency>(record: &mut Record, number: u64, purchase_price: u64) {
-    let record_id = record.id();
     df::add(
         record.uid_mut(),
         CertificateKey(),
         Certificate {
-            record_id,
             number,
             purchase_currency: type_name::with_defining_ids<Currency>(),
             purchase_price,
@@ -75,17 +62,6 @@ public fun of(record: &Record): Option<Certificate> {
     } else {
         option::none()
     }
-}
-
-/// Whether this certificate was stamped on `record`. The guard against a certificate
-/// lifted onto a record it does not describe; `pressing::verify_record` adds the
-/// address-math half.
-public fun is_for(self: &Certificate, record: &Record): bool {
-    self.record_id == record.id()
-}
-
-public fun record_id(self: &Certificate): ID {
-    self.record_id
 }
 
 public fun number(self: &Certificate): u64 {

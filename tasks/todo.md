@@ -106,9 +106,11 @@ Consolidated decision after exploring (and rejecting) permissionless minting and
       `listing::buy`); miso-cli publish path. Note: all of these still target published
       v5 — they never caught up with the edition split either.
 - [ ] `miso-party-extensions/party_featured_drop` — rewrite against new `Drop`/`Listing`
-- [ ] Publish both packages to testnet; authorize `miso_drop::drop::MintWitness` in
-      `miso_record::Settings` (it moved modules again — edition → drop); update
-      `miso-deployments` manifest notes
+- [x] Publish immutable `miso_record` and `miso_pressing` packages to Testnet and
+      authorize `miso_pressing::pressing::MintWitness` in `miso_record::Settings`
+      (authorization transaction `2M2AcrcddNVAzDkDCrYqr7yALLXvMqSuV5wqh8s5Va9a`)
+- [ ] Update the `miso-deployments` manifest and downstream clients with the final
+      package and singleton object ids
 - [ ] miso-brain map docs (`map/miso-pressing.md`, MAP.md) + whitepaper mentions of
       `purchase_price`/`purchase_currency`
 

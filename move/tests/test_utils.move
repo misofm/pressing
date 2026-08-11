@@ -19,7 +19,7 @@ public fun id(addr: address): ID {
 /// A `Settings` with this package's `MintWitness` authorized.
 public fun authorized_settings(ctx: &mut TxContext): (Settings, SettingsAdminCap) {
     let (mut cfg, admin) = settings::new_for_testing(ctx);
-    settings::authorize<MintWitness>(&mut cfg, &admin);
+    settings::authorize<MintWitness>(&mut cfg, &admin, ctx);
     (cfg, admin)
 }
 
