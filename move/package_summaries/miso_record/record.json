@@ -10,6 +10,10 @@
       "name": "settings"
     },
     {
+      "address": "std",
+      "name": "type_name"
+    },
+    {
       "address": "sui",
       "name": "clock"
     },
@@ -177,6 +181,24 @@
               "name": "Record",
               "type_arguments": []
             }
+          }
+        },
+        {
+          "name": "ctx",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "sui",
+                    "name": "tx_context"
+                  },
+                  "name": "TxContext",
+                  "type_arguments": []
+                }
+              }
+            ]
           }
         }
       ],
@@ -525,8 +547,22 @@
               }
             }
           },
-          "release_id": {
+          "parent_id": {
             "index": 1,
+            "doc": " The object whose derived-claim namespace issued this record.",
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "sui",
+                  "name": "object"
+                },
+                "name": "ID",
+                "type_arguments": []
+              }
+            }
+          },
+          "release_id": {
+            "index": 2,
             "doc": null,
             "type_": {
               "Datatype": {
@@ -540,17 +576,31 @@
             }
           },
           "number": {
-            "index": 2,
+            "index": 3,
             "doc": " The derived-claim slot the record was minted at. Context for indexers — the\n struct itself does not carry it.",
             "type_": "u64"
           },
           "created_at_ms": {
-            "index": 3,
+            "index": 4,
             "doc": null,
             "type_": "u64"
           },
+          "minter": {
+            "index": 5,
+            "doc": " The authorized witness type used to mint this record.",
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "std",
+                  "name": "type_name"
+                },
+                "name": "TypeName",
+                "type_arguments": []
+              }
+            }
+          },
           "created_by": {
-            "index": 4,
+            "index": 6,
             "doc": null,
             "type_": "address"
           }
@@ -596,6 +646,11 @@
                 "type_arguments": []
               }
             }
+          },
+          "destroyed_by": {
+            "index": 2,
+            "doc": null,
+            "type_": "address"
           }
         }
       }

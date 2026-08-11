@@ -6,7 +6,7 @@
   "doc": " Represents a musical composition (song, instrumental work) in Miso.\n Compositions are the underlying written works that recordings are based on.\n Each composition has its own share token for ownership distribution.\n\n ### Key Features:\n\n - Share token initialization with fixed supply (10M tokens, 6 decimals)\n - State machine: Initialized -> Published (embedded fields immutable after\n   publish; dynamic fields remain extensible via `uid_mut`)\n - Deterministic addresses via derived object pattern\n\n Attribution (credits) is intentionally NOT part of core: it is\n display-oriented, varies across platforms, and is never read by the\n economics. It lives in a first-party credits extension attached via\n `uid_mut`, so core takes no dependency on an identity package and core\n publish enforces no attribution.\n\n ### Lifecycle and trust model\n\n A composition is `key`-only with no `drop`: a fresh `Initialized` object\n cannot be transferred, wrapped, publicly shared, or discarded, and its only\n by-value consumer is `publish`. Create-and-publish is therefore atomic by\n construction — an `Initialized` composition cannot outlive its creating\n transaction, and every composition that exists on-chain is `Published` and\n shared. There is deliberately no keep function; staged building must fit\n one transaction.\n\n `uid_mut` works in any lifecycle state and is permanent root over ALL\n dynamic fields on the object — including fields attached by other\n extensions. \"Immutable after publish\" covers the embedded fields only;\n extension-layer data stays admin-mutable in perpetuity. This is the\n designed extension surface, and it is the one trust assumption that never\n expires: integrators should model the cap holder as able to mutate or\n delete any extension data, forever.",
   "immediate_dependencies": [
     {
-      "address": "0x6d9119870f97969ffb4d2b86ef4e876e42d983b01e0bfa7e39c0d32e6c9b5cb0",
+      "address": "0x829f308ea13acc31495dae5d9d95b3967816e6271c043e6949e7418039107411",
       "name": "share"
     },
     {
@@ -288,8 +288,26 @@
     "set_royalty_rate": {
       "source_index": 2,
       "index": 2,
-      "doc": " Sets the royalty rate this composition earns from each recording.\n Must not exceed `MAX_ROYALTY_RATE_BPS` (there is no floor; 0% is allowed),\n and only after a full epoch has elapsed since the last change — a rate set in epoch\n N is changeable from epoch N+2 onward, so every rate is in effect for at\n least one complete epoch. The rate can be changed in any lifecycle state,\n including after publishing — because each recording snapshots the rate\n when it is created, a change only affects recordings created afterward\n (existing recordings keep the rate they captured).",
-      "attributes": [],
+      "doc": " Sets the royalty rate this composition earns from each recording.\n Must not exceed `MAX_ROYALTY_RATE_BPS` (there is no floor; 0% is allowed).\n The rate can be changed in any lifecycle state, including after publishing,\n and takes effect immediately. There is deliberately no rate-change cooldown:\n a change cannot surprise anyone, because each recording snapshots the rate\n when it is created (existing recordings keep the rate they captured) and\n `recording::new`'s `max_royalty_rate_bps` slippage guard means no future\n recorder can be charged a rate they did not consent to.",
+      "attributes": [
+        {
+          "Parameterized": [
+            "allow",
+            [
+              {
+                "Parameterized": [
+                  "lint",
+                  [
+                    {
+                      "Name": "prefer_mut_tx_context"
+                    }
+                  ]
+                ]
+              }
+            ]
+          ]
+        }
+      ],
       "visibility": "Public",
       "entry": false,
       "type_parameters": [
@@ -427,150 +445,9 @@
         }
       ]
     },
-    "state": {
+    "title": {
       "source_index": 4,
       "index": 4,
-      "doc": " Returns the current lifecycle state.",
-      "attributes": [],
-      "visibility": "Public",
-      "entry": false,
-      "type_parameters": [
-        {
-          "name": "CompositionShare",
-          "constraints": []
-        }
-      ],
-      "parameters": [
-        {
-          "name": "self",
-          "type_": {
-            "Reference": [
-              false,
-              {
-                "Datatype": {
-                  "module": {
-                    "address": "miso",
-                    "name": "composition"
-                  },
-                  "name": "Composition",
-                  "type_arguments": [
-                    {
-                      "phantom": true,
-                      "argument": {
-                        "NamedTypeParameter": "CompositionShare"
-                      }
-                    }
-                  ]
-                }
-              }
-            ]
-          }
-        }
-      ],
-      "return_": [
-        {
-          "Datatype": {
-            "module": {
-              "address": "miso",
-              "name": "composition"
-            },
-            "name": "CompositionState",
-            "type_arguments": []
-          }
-        }
-      ]
-    },
-    "is_initialized_state": {
-      "source_index": 5,
-      "index": 5,
-      "doc": " Returns true if the composition is in the Initialized state.",
-      "attributes": [],
-      "visibility": "Public",
-      "entry": false,
-      "type_parameters": [
-        {
-          "name": "CompositionShare",
-          "constraints": []
-        }
-      ],
-      "parameters": [
-        {
-          "name": "self",
-          "type_": {
-            "Reference": [
-              false,
-              {
-                "Datatype": {
-                  "module": {
-                    "address": "miso",
-                    "name": "composition"
-                  },
-                  "name": "Composition",
-                  "type_arguments": [
-                    {
-                      "phantom": true,
-                      "argument": {
-                        "NamedTypeParameter": "CompositionShare"
-                      }
-                    }
-                  ]
-                }
-              }
-            ]
-          }
-        }
-      ],
-      "return_": [
-        "bool"
-      ]
-    },
-    "is_published_state": {
-      "source_index": 6,
-      "index": 6,
-      "doc": " Returns true if the composition is in the Published state.",
-      "attributes": [],
-      "visibility": "Public",
-      "entry": false,
-      "type_parameters": [
-        {
-          "name": "CompositionShare",
-          "constraints": []
-        }
-      ],
-      "parameters": [
-        {
-          "name": "self",
-          "type_": {
-            "Reference": [
-              false,
-              {
-                "Datatype": {
-                  "module": {
-                    "address": "miso",
-                    "name": "composition"
-                  },
-                  "name": "Composition",
-                  "type_arguments": [
-                    {
-                      "phantom": true,
-                      "argument": {
-                        "NamedTypeParameter": "CompositionShare"
-                      }
-                    }
-                  ]
-                }
-              }
-            ]
-          }
-        }
-      ],
-      "return_": [
-        "bool"
-      ]
-    },
-    "title": {
-      "source_index": 7,
-      "index": 7,
       "doc": " Returns the primary title.",
       "attributes": [],
       "visibility": "Public",
@@ -627,8 +504,8 @@
       ]
     },
     "royalty_rate": {
-      "source_index": 8,
-      "index": 8,
+      "source_index": 5,
+      "index": 5,
       "doc": " Returns the royalty rate this composition earns from each recording.",
       "attributes": [],
       "visibility": "Public",
@@ -679,53 +556,9 @@
         }
       ]
     },
-    "royalty_rate_last_changed_epoch": {
-      "source_index": 9,
-      "index": 9,
-      "doc": " Returns the epoch in which the royalty rate was last changed.",
-      "attributes": [],
-      "visibility": "Public",
-      "entry": false,
-      "type_parameters": [
-        {
-          "name": "CompositionShare",
-          "constraints": []
-        }
-      ],
-      "parameters": [
-        {
-          "name": "self",
-          "type_": {
-            "Reference": [
-              false,
-              {
-                "Datatype": {
-                  "module": {
-                    "address": "miso",
-                    "name": "composition"
-                  },
-                  "name": "Composition",
-                  "type_arguments": [
-                    {
-                      "phantom": true,
-                      "argument": {
-                        "NamedTypeParameter": "CompositionShare"
-                      }
-                    }
-                  ]
-                }
-              }
-            ]
-          }
-        }
-      ],
-      "return_": [
-        "u64"
-      ]
-    },
     "uid": {
-      "source_index": 10,
-      "index": 10,
+      "source_index": 6,
+      "index": 6,
       "doc": " Returns a reference to the composition's UID for reading dynamic fields.",
       "attributes": [],
       "visibility": "Public",
@@ -782,8 +615,8 @@
       ]
     },
     "uid_mut": {
-      "source_index": 11,
-      "index": 11,
+      "source_index": 7,
+      "index": 7,
       "doc": " Returns a mutable reference to the composition's UID.\n Requires the admin capability. Works in any lifecycle state — dynamic\n fields are the extension surface and stay admin-mutable after publish;\n only the embedded fields are frozen. The reference is root over every\n dynamic field on the object, including fields attached by other\n extensions.",
       "attributes": [],
       "visibility": "Public",
@@ -927,14 +760,14 @@
           },
           "royalty_rate": {
             "index": 3,
-            "doc": " Royalty rate this composition earns from each recording's revenue,\n paired with the epoch it was last changed in. Each rate stays in\n effect for at least one full epoch.",
+            "doc": " Royalty rate this composition earns from each recording's revenue.",
             "type_": {
               "Datatype": {
                 "module": {
-                  "address": "miso",
-                  "name": "composition"
+                  "address": "0x93b3b214ad031ef9c340543eeafccac74d6a9232ce9506751fbeccea850a0823",
+                  "name": "bps"
                 },
-                "name": "CompositionRoyaltyRate",
+                "name": "BPS",
                 "type_arguments": []
               }
             }
@@ -977,43 +810,8 @@
         }
       }
     },
-    "CompositionRoyaltyRate": {
-      "index": 2,
-      "doc": " The royalty rate paired with the epoch in which it was last set.\n A rate change requires a full epoch to have elapsed since the last change —\n a rate set in epoch N is changeable from epoch N+2 onward — so every rate\n is in effect for at least one complete epoch. This bounds how a rate change\n can surprise a recording creator and makes bait-and-revert oscillation\n uneconomical: once a change lands, it is pinned in full public view for the\n remainder of that epoch plus the entire next one.",
-      "attributes": [],
-      "abilities": [
-        "Copy",
-        "Drop",
-        "Store"
-      ],
-      "type_parameters": [],
-      "fields": {
-        "positional_fields": true,
-        "fields": {
-          "pos0": {
-            "index": 0,
-            "doc": null,
-            "type_": {
-              "Datatype": {
-                "module": {
-                  "address": "0x93b3b214ad031ef9c340543eeafccac74d6a9232ce9506751fbeccea850a0823",
-                  "name": "bps"
-                },
-                "name": "BPS",
-                "type_arguments": []
-              }
-            }
-          },
-          "pos1": {
-            "index": 1,
-            "doc": null,
-            "type_": "u64"
-          }
-        }
-      }
-    },
     "CompositionAdminCapKey": {
-      "index": 3,
+      "index": 2,
       "doc": " Key for deriving the admin capability's deterministic address from the composition.",
       "attributes": [],
       "abilities": [
@@ -1033,7 +831,7 @@
       }
     },
     "CompositionPublishedEvent": {
-      "index": 4,
+      "index": 3,
       "doc": " Emitted once when a composition is published. A pure pointer: it carries the\n composition's identity. A composition's membership is immutable after\n publishing, so an indexer treats this as a signal to fetch the full object by\n `composition_id`; all indexed data — including the publish timestamp — lives\n in the object itself (the royalty rate may change later and is tracked\n separately via `CompositionRoyaltySetEvent`).",
       "attributes": [],
       "abilities": [
@@ -1068,8 +866,8 @@
       }
     },
     "CompositionRoyaltySetEvent": {
-      "index": 5,
-      "doc": " Emitted when the composition's royalty rate is set or changed. The\n composition is identified by the event's `CompositionShare` phantom.",
+      "index": 4,
+      "doc": " Emitted when the composition's royalty rate is changed. Carries both sides\n of the transition and the actor so an indexer can reconstruct royalty-rate\n history without fetching mutable object state.",
       "attributes": [],
       "abilities": [
         "Copy",
@@ -1085,10 +883,34 @@
       "fields": {
         "positional_fields": false,
         "fields": {
-          "royalty_rate_bps": {
+          "composition_id": {
             "index": 0,
             "doc": null,
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "sui",
+                  "name": "object"
+                },
+                "name": "ID",
+                "type_arguments": []
+              }
+            }
+          },
+          "previous_royalty_rate_bps": {
+            "index": 1,
+            "doc": null,
             "type_": "u16"
+          },
+          "royalty_rate_bps": {
+            "index": 2,
+            "doc": null,
+            "type_": "u16"
+          },
+          "changed_by": {
+            "index": 3,
+            "doc": null,
+            "type_": "address"
           }
         }
       }

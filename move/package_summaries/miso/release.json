@@ -398,114 +398,9 @@
         }
       ]
     },
-    "state": {
+    "title": {
       "source_index": 6,
       "index": 6,
-      "doc": " Returns the release state.",
-      "attributes": [],
-      "visibility": "Public",
-      "entry": false,
-      "type_parameters": [],
-      "parameters": [
-        {
-          "name": "self",
-          "type_": {
-            "Reference": [
-              false,
-              {
-                "Datatype": {
-                  "module": {
-                    "address": "miso",
-                    "name": "release"
-                  },
-                  "name": "Release",
-                  "type_arguments": []
-                }
-              }
-            ]
-          }
-        }
-      ],
-      "return_": [
-        {
-          "Datatype": {
-            "module": {
-              "address": "miso",
-              "name": "release"
-            },
-            "name": "ReleaseState",
-            "type_arguments": []
-          }
-        }
-      ]
-    },
-    "is_initialized_state": {
-      "source_index": 7,
-      "index": 7,
-      "doc": " Returns true if the release is in the Initialized state.",
-      "attributes": [],
-      "visibility": "Public",
-      "entry": false,
-      "type_parameters": [],
-      "parameters": [
-        {
-          "name": "self",
-          "type_": {
-            "Reference": [
-              false,
-              {
-                "Datatype": {
-                  "module": {
-                    "address": "miso",
-                    "name": "release"
-                  },
-                  "name": "Release",
-                  "type_arguments": []
-                }
-              }
-            ]
-          }
-        }
-      ],
-      "return_": [
-        "bool"
-      ]
-    },
-    "is_published_state": {
-      "source_index": 8,
-      "index": 8,
-      "doc": " Returns true if the release is in the Published state.",
-      "attributes": [],
-      "visibility": "Public",
-      "entry": false,
-      "type_parameters": [],
-      "parameters": [
-        {
-          "name": "self",
-          "type_": {
-            "Reference": [
-              false,
-              {
-                "Datatype": {
-                  "module": {
-                    "address": "miso",
-                    "name": "release"
-                  },
-                  "name": "Release",
-                  "type_arguments": []
-                }
-              }
-            ]
-          }
-        }
-      ],
-      "return_": [
-        "bool"
-      ]
-    },
-    "title": {
-      "source_index": 9,
-      "index": 9,
       "doc": " Returns the release title.",
       "attributes": [],
       "visibility": "Public",
@@ -550,9 +445,9 @@
       ]
     },
     "tracks": {
-      "source_index": 10,
-      "index": 10,
-      "doc": " Returns a reference to the ordered tracklist.",
+      "source_index": 7,
+      "index": 7,
+      "doc": " Returns a reference to the ordered tracklist. The single tracklist\n accessor — consumers derive length, membership, and per-track data from it\n (`tracks().length()`, `tracks().any!(..)`, indexing).",
       "attributes": [],
       "visibility": "Public",
       "entry": false,
@@ -597,86 +492,9 @@
         }
       ]
     },
-    "total_tracks": {
-      "source_index": 11,
-      "index": 11,
-      "doc": " Returns the number of tracks on the release.",
-      "attributes": [],
-      "visibility": "Public",
-      "entry": false,
-      "type_parameters": [],
-      "parameters": [
-        {
-          "name": "self",
-          "type_": {
-            "Reference": [
-              false,
-              {
-                "Datatype": {
-                  "module": {
-                    "address": "miso",
-                    "name": "release"
-                  },
-                  "name": "Release",
-                  "type_arguments": []
-                }
-              }
-            ]
-          }
-        }
-      ],
-      "return_": [
-        "u64"
-      ]
-    },
-    "contains_recording": {
-      "source_index": 12,
-      "index": 12,
-      "doc": " Returns whether the release contains a track for the given recording.",
-      "attributes": [],
-      "visibility": "Public",
-      "entry": false,
-      "type_parameters": [],
-      "parameters": [
-        {
-          "name": "self",
-          "type_": {
-            "Reference": [
-              false,
-              {
-                "Datatype": {
-                  "module": {
-                    "address": "miso",
-                    "name": "release"
-                  },
-                  "name": "Release",
-                  "type_arguments": []
-                }
-              }
-            ]
-          }
-        },
-        {
-          "name": "recording_id",
-          "type_": {
-            "Datatype": {
-              "module": {
-                "address": "sui",
-                "name": "object"
-              },
-              "name": "ID",
-              "type_arguments": []
-            }
-          }
-        }
-      ],
-      "return_": [
-        "bool"
-      ]
-    },
     "release_admin_cap_release_id": {
-      "source_index": 13,
-      "index": 13,
+      "source_index": 8,
+      "index": 8,
       "doc": " Returns the release ID associated with the admin capability.",
       "attributes": [],
       "visibility": "Public",
@@ -716,8 +534,8 @@
       ]
     },
     "uid": {
-      "source_index": 14,
-      "index": 14,
+      "source_index": 9,
+      "index": 9,
       "doc": " Returns a reference to the release's UID for reading dynamic fields.",
       "attributes": [],
       "visibility": "Public",
@@ -762,8 +580,8 @@
       ]
     },
     "uid_mut": {
-      "source_index": 15,
-      "index": 15,
+      "source_index": 10,
+      "index": 10,
       "doc": " Returns a mutable reference to the release's UID.\n Requires the admin capability. Works in any lifecycle state — dynamic\n fields are the extension surface (e.g. credits) and stay admin-mutable\n after publish; only the embedded fields are frozen. The reference is root\n over every dynamic field on the object, including fields attached by\n other extensions.",
       "attributes": [],
       "visibility": "Public",
@@ -826,8 +644,8 @@
       ]
     },
     "extract_digest_inputs": {
-      "source_index": 16,
-      "index": 16,
+      "source_index": 11,
+      "index": 11,
       "doc": " Extracts the recording IDs, split values, and split sum from the tracklist.\n Used for release digest calculation and split validation. The vectors mirror\n the tracklist ordering exactly — the digest pre-image IS the stored shape.",
       "attributes": [],
       "visibility": "Private",
@@ -875,8 +693,8 @@
       ]
     },
     "calculate_release_digest": {
-      "source_index": 17,
-      "index": 17,
+      "source_index": 12,
+      "index": 12,
       "doc": " Calculates the deterministic release digest from recording IDs, split values, and nonce.",
       "attributes": [],
       "visibility": "Private",
@@ -916,8 +734,8 @@
       ]
     },
     "assert_track_assignments": {
-      "source_index": 18,
-      "index": 18,
+      "source_index": 13,
+      "index": 13,
       "doc": " Assigns all tracks to this release, verifying each track's target release ID matches.",
       "attributes": [],
       "visibility": "Private",
@@ -1151,8 +969,42 @@
         }
       }
     },
-    "ReleasePublishedEvent": {
+    "ReleaseRegistryCreatedEvent": {
       "index": 6,
+      "doc": " Emitted when package initialization creates the shared release registry.",
+      "attributes": [],
+      "abilities": [
+        "Copy",
+        "Drop"
+      ],
+      "type_parameters": [],
+      "fields": {
+        "positional_fields": false,
+        "fields": {
+          "registry_id": {
+            "index": 0,
+            "doc": null,
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "sui",
+                  "name": "object"
+                },
+                "name": "ID",
+                "type_arguments": []
+              }
+            }
+          },
+          "created_by": {
+            "index": 1,
+            "doc": null,
+            "type_": "address"
+          }
+        }
+      }
+    },
+    "ReleasePublishedEvent": {
+      "index": 7,
       "doc": " Emitted once when a release is published. A pure pointer: it carries the\n release's identity. A release's embedded fields (discs, tracks) are\n immutable after publishing, so an indexer treats this as a signal to\n fetch the full object by `release_id`; all indexed data — including the\n publish timestamp — lives in the object itself. Dynamic fields (e.g.\n credits attached by the credits extension) may still be attached afterward.\n\n There is deliberately no `ReleaseCreatedEvent`: an `Initialized` release\n exists only inside its creating transaction (create-and-publish is atomic),\n so publish is the one lifecycle moment an observer can ever see. Pre-publish\n correlation is available from `DealCreatedEvent.release_id`, which carries\n the derived id before the release exists.",
       "attributes": [],
       "abilities": [

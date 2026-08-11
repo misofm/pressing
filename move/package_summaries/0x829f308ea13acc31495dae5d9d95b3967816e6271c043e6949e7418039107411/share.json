@@ -1,0 +1,174 @@
+{
+  "id": {
+    "address": "0x829f308ea13acc31495dae5d9d95b3967816e6271c043e6949e7418039107411",
+    "name": "share"
+  },
+  "doc": " Fixed-supply currency issuance for representing equity-like ownership stakes.\n\n ### Usage:\n\n 1. Create a package with a `share` module containing a `Share` type\n 2. Create a currency with `sui::coin_registry::new_currency`\n 3. Delete the metadata cap via `finalize_and_delete_metadata_cap`\n 4. Call `share::share::initialize` with the currency and treasury cap\n 5. Distribute the returned balance to shareholders",
+  "immediate_dependencies": [
+    {
+      "address": "std",
+      "name": "type_name"
+    },
+    {
+      "address": "sui",
+      "name": "balance"
+    },
+    {
+      "address": "sui",
+      "name": "bcs"
+    },
+    {
+      "address": "sui",
+      "name": "coin"
+    },
+    {
+      "address": "sui",
+      "name": "coin_registry"
+    },
+    {
+      "address": "sui",
+      "name": "event"
+    }
+  ],
+  "attributes": [],
+  "functions": {
+    "initialize": {
+      "source_index": 0,
+      "index": 0,
+      "doc": " Initializes a fixed-supply share token with 10,000,000.000000 supply.\n Validates the currency configuration, mints the fixed supply,\n and makes the supply immutable. Returns the full token balance.\n\n The type parameter must be a `Share` type defined in a `share` module\n (i.e. `<address>::share::Share`).",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [
+        {
+          "name": "Share",
+          "constraints": []
+        }
+      ],
+      "parameters": [
+        {
+          "name": "currency",
+          "type_": {
+            "Reference": [
+              true,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "sui",
+                    "name": "coin_registry"
+                  },
+                  "name": "Currency",
+                  "type_arguments": [
+                    {
+                      "phantom": true,
+                      "argument": {
+                        "NamedTypeParameter": "Share"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "treasury_cap",
+          "type_": {
+            "Datatype": {
+              "module": {
+                "address": "sui",
+                "name": "coin"
+              },
+              "name": "TreasuryCap",
+              "type_arguments": [
+                {
+                  "phantom": true,
+                  "argument": {
+                    "NamedTypeParameter": "Share"
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "return_": [
+        {
+          "Datatype": {
+            "module": {
+              "address": "sui",
+              "name": "balance"
+            },
+            "name": "Balance",
+            "type_arguments": [
+              {
+                "phantom": true,
+                "argument": {
+                  "NamedTypeParameter": "Share"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "assert_valid_share_type": {
+      "source_index": 1,
+      "index": 1,
+      "doc": " Asserts that the share type name ends with the expected suffix\n (`<address>::share::Share`). Public so downstream packages that hold or\n route share types (e.g. cap inventories) can enforce the same gate this\n package's `initialize` enforces, instead of mirroring it.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [
+        {
+          "name": "Share",
+          "constraints": []
+        }
+      ],
+      "parameters": [],
+      "return_": []
+    }
+  },
+  "structs": {
+    "ShareInitializedEvent": {
+      "index": 0,
+      "doc": null,
+      "attributes": [],
+      "abilities": [
+        "Copy",
+        "Drop"
+      ],
+      "type_parameters": [],
+      "fields": {
+        "positional_fields": false,
+        "fields": {
+          "share_type": {
+            "index": 0,
+            "doc": null,
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "std",
+                  "name": "type_name"
+                },
+                "name": "TypeName",
+                "type_arguments": []
+              }
+            }
+          },
+          "decimals": {
+            "index": 1,
+            "doc": null,
+            "type_": "u8"
+          },
+          "supply": {
+            "index": 2,
+            "doc": null,
+            "type_": "u64"
+          }
+        }
+      }
+    }
+  },
+  "enums": {}
+}

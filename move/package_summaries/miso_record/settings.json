@@ -62,9 +62,60 @@
       ],
       "return_": []
     },
-    "authorize": {
+    "new": {
       "source_index": 1,
       "index": 1,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Private",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "ctx",
+          "type_": {
+            "Reference": [
+              true,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "sui",
+                    "name": "tx_context"
+                  },
+                  "name": "TxContext",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        {
+          "Datatype": {
+            "module": {
+              "address": "miso_record",
+              "name": "settings"
+            },
+            "name": "Settings",
+            "type_arguments": []
+          }
+        },
+        {
+          "Datatype": {
+            "module": {
+              "address": "miso_record",
+              "name": "settings"
+            },
+            "name": "SettingsAdminCap",
+            "type_arguments": []
+          }
+        }
+      ]
+    },
+    "authorize": {
+      "source_index": 2,
+      "index": 2,
       "doc": " Authorize the witness type `W` to mint records. Idempotent: authorizing an\n already-authorized type is a no-op rather than an abort.",
       "attributes": [],
       "visibility": "Public",
@@ -95,7 +146,7 @@
           }
         },
         {
-          "name": "_",
+          "name": "admin_cap",
           "type_": {
             "Reference": [
               false,
@@ -111,13 +162,31 @@
               }
             ]
           }
+        },
+        {
+          "name": "ctx",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "sui",
+                    "name": "tx_context"
+                  },
+                  "name": "TxContext",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
         }
       ],
       "return_": []
     },
     "revoke": {
-      "source_index": 2,
-      "index": 2,
+      "source_index": 3,
+      "index": 3,
       "doc": " Revoke the witness type `W`. Idempotent: revoking an unauthorized type is a no-op.",
       "attributes": [],
       "visibility": "Public",
@@ -148,7 +217,7 @@
           }
         },
         {
-          "name": "_",
+          "name": "admin_cap",
           "type_": {
             "Reference": [
               false,
@@ -164,13 +233,31 @@
               }
             ]
           }
+        },
+        {
+          "name": "ctx",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "sui",
+                    "name": "tx_context"
+                  },
+                  "name": "TxContext",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
         }
       ],
       "return_": []
     },
     "is_authorized": {
-      "source_index": 3,
-      "index": 3,
+      "source_index": 4,
+      "index": 4,
       "doc": " Whether the witness type `W` is authorized to mint.",
       "attributes": [],
       "visibility": "Public",
@@ -206,8 +293,8 @@
       ]
     },
     "minters": {
-      "source_index": 4,
-      "index": 4,
+      "source_index": 5,
+      "index": 5,
       "doc": " The `TypeName`s of all authorized minter witnesses.",
       "attributes": [],
       "visibility": "Public",
@@ -335,7 +422,7 @@
         }
       }
     },
-    "MinterAuthorizedEvent": {
+    "SettingsCreatedEvent": {
       "index": 2,
       "doc": null,
       "attributes": [],
@@ -347,24 +434,43 @@
       "fields": {
         "positional_fields": false,
         "fields": {
-          "minter": {
+          "settings_id": {
             "index": 0,
             "doc": null,
             "type_": {
               "Datatype": {
                 "module": {
-                  "address": "std",
-                  "name": "type_name"
+                  "address": "sui",
+                  "name": "object"
                 },
-                "name": "TypeName",
+                "name": "ID",
                 "type_arguments": []
               }
             }
+          },
+          "admin_cap_id": {
+            "index": 1,
+            "doc": null,
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "sui",
+                  "name": "object"
+                },
+                "name": "ID",
+                "type_arguments": []
+              }
+            }
+          },
+          "admin": {
+            "index": 2,
+            "doc": null,
+            "type_": "address"
           }
         }
       }
     },
-    "MinterRevokedEvent": {
+    "MinterAuthorizedEvent": {
       "index": 3,
       "doc": null,
       "attributes": [],
@@ -376,8 +482,36 @@
       "fields": {
         "positional_fields": false,
         "fields": {
-          "minter": {
+          "settings_id": {
             "index": 0,
+            "doc": null,
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "sui",
+                  "name": "object"
+                },
+                "name": "ID",
+                "type_arguments": []
+              }
+            }
+          },
+          "admin_cap_id": {
+            "index": 1,
+            "doc": null,
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "sui",
+                  "name": "object"
+                },
+                "name": "ID",
+                "type_arguments": []
+              }
+            }
+          },
+          "minter": {
+            "index": 2,
             "doc": null,
             "type_": {
               "Datatype": {
@@ -389,6 +523,73 @@
                 "type_arguments": []
               }
             }
+          },
+          "authorized_by": {
+            "index": 3,
+            "doc": null,
+            "type_": "address"
+          }
+        }
+      }
+    },
+    "MinterRevokedEvent": {
+      "index": 4,
+      "doc": null,
+      "attributes": [],
+      "abilities": [
+        "Copy",
+        "Drop"
+      ],
+      "type_parameters": [],
+      "fields": {
+        "positional_fields": false,
+        "fields": {
+          "settings_id": {
+            "index": 0,
+            "doc": null,
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "sui",
+                  "name": "object"
+                },
+                "name": "ID",
+                "type_arguments": []
+              }
+            }
+          },
+          "admin_cap_id": {
+            "index": 1,
+            "doc": null,
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "sui",
+                  "name": "object"
+                },
+                "name": "ID",
+                "type_arguments": []
+              }
+            }
+          },
+          "minter": {
+            "index": 2,
+            "doc": null,
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "std",
+                  "name": "type_name"
+                },
+                "name": "TypeName",
+                "type_arguments": []
+              }
+            }
+          },
+          "revoked_by": {
+            "index": 3,
+            "doc": null,
+            "type_": "address"
           }
         }
       }

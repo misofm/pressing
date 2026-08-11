@@ -612,8 +612,22 @@
               }
             }
           },
-          "release_id": {
+          "recording_id": {
             "index": 1,
+            "doc": " ID of the recording whose inclusion is authorized.",
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "sui",
+                  "name": "object"
+                },
+                "name": "ID",
+                "type_arguments": []
+              }
+            }
+          },
+          "release_id": {
+            "index": 2,
             "doc": " ID of the target release.",
             "type_": {
               "Datatype": {
@@ -627,9 +641,14 @@
             }
           },
           "track_split_bps_value": {
-            "index": 2,
+            "index": 3,
             "doc": " Track-level revenue split in basis points.",
             "type_": "u16"
+          },
+          "created_by": {
+            "index": 4,
+            "doc": null,
+            "type_": "address"
           }
         }
       }

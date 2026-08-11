@@ -3,7 +3,7 @@
     "address": "miso_pressing",
     "name": "listing"
   },
-  "doc": " One currency's offer on a pressing — a *Listing*.\n\n A listing answers exactly two questions: **what does it cost** and **can you pay\n in this currency**. Everything about *what you get* — the run, the number —\n belongs to the `Pressing`. So a pressing sold in SUI and in USDC has two listings,\n each with its own price and switch, both drawing on the same number sequence.\n\n A listing's UID is derived off its pressing's UID at `ListingKey<Currency>()`, so\n there is exactly one listing per (pressing, currency) — ever — and its address is\n computable from the pressing's alone. The key is *phantom-typed* rather than a\n stored `TypeName`, which makes the currency part of the key's type: distinct\n currencies are distinct key types, so `derived_object::claim` enforces\n once-per-currency by itself and the pressing needs no set of currencies to check\n against. Listings are **permanent**: never destroyed, never replaced. The offer\n changes *in place* — repriced, disabled, re-enabled — and the listing keeps its\n identity through every change.\n\n # Price\n\n `Fixed` (pay exactly) or `Floor` (pay at least; overpayment is kept as a tip, not\n refunded). The whole payment forwards to the release's address. Settable with the\n `PressingAdminCap` (`set_price`) — repricing is an edit, not a teardown — and a\n change cannot catch a buyer out: a `Fixed` buyer pays *exactly*, so a stale\n payment aborts against a new price, and a `Floor` buyer never pays more than the\n coin they sent.\n\n # Two switches\n\n A listing is `Enabled` or `Disabled`; a disabled listing takes no payment in its\n currency, while the pressing's other currencies carry on. Above it, the pressing's\n own `Active | Paused` stops every currency at once (`pressing::mint_next`). A sale\n needs both open. Both are primary facts — decisions, derivable from nothing on\n chain — which is exactly the kind of state that belongs in storage.\n\n There is no schedule and no expiry. An uncapped, permanent listing has nothing to\n count down to, and a time-limited sale is scarcity theater this design rejects; an\n artist opening or ending a campaign flips the switch.\n\n # The certificate\n\n What the buyer paid is not part of the record — it is a fact about the *sale* — so\n it rides out on the record's `Certificate`, stamped by `pressing::mint_next`\n alongside the number. One field, written once, in the transaction that pressed the\n record.",
+  "doc": " One currency's offer on a pressing — a *Listing*.\n\n A listing answers exactly two questions: **what does it cost** and **can you pay\n in this currency**. Everything about *what you get* — the run, the number —\n belongs to the `Pressing`. So a pressing sold in SUI and in USDC has two listings,\n each with its own price and switch, both drawing on the same number sequence.\n\n A listing's UID is derived off its pressing's UID at `ListingKey<Currency>()`, so\n there is exactly one listing per (pressing, currency) — ever — and its address is\n computable from the pressing's alone. The key is *phantom-typed* rather than a\n stored `TypeName`, which makes the currency part of the key's type: distinct\n currencies are distinct key types, so `derived_object::claim` enforces\n once-per-currency by itself and the pressing needs no set of currencies to check\n against. Listings are **permanent**: never destroyed, never replaced. The offer\n changes *in place* — repriced, disabled, re-enabled — and the listing keeps its\n identity through every change.\n\n # Price\n\n `Fixed` (pay exactly) or `Floor` (pay at least; overpayment is kept as a tip, not\n refunded). The whole payment forwards to the release's address. Settable with the\n `PressingAdminCap` (`set_price`) — repricing is an edit, not a teardown — and a\n change cannot catch a buyer out: a `Fixed` buyer pays *exactly*, so a stale\n payment aborts against a new price, and a `Floor` buyer never pays more than the\n balance they sent.\n\n Payment is a `Balance<Currency>`, never a `Coin<Currency>`. A coin is a wrapper an\n object id, an owner, and a wrapping/unwrapping round trip — that this path has no\n use for: the money comes in from wherever the PTB got it (a withdrawal off the\n buyer's accumulator, a `coin::into_balance`, a split of some larger balance) and\n goes straight back out to the release's address via `balance::send_funds`. Taking\n the bare value means `buy` never mints an object just to destroy it, and never\n forces the caller to make one either.\n\n # Two switches\n\n A listing is `Enabled` or `Disabled`; a disabled listing takes no payment in its\n currency, while the pressing's other currencies carry on. Above it, the pressing's\n own `Scheduled → Active → Paused` governs every currency at once\n (`pressing::mint_next`). A sale needs both open.\n\n The **when** lives on the pressing, not here: a drop moment is a fact about the\n release going on sale, not about one payment rail, and a run that opened in SUI at\n Friday 8pm and in USDC at some other time would have two drop moments and one\n number sequence. So a listing carries no schedule — only whether its currency is\n taken.\n\n # The certificate\n\n What the buyer paid is not part of the record — it is a fact about the *sale* — so\n it rides out on the record's `Certificate`, stamped by `pressing::mint_next`\n alongside the number. One field, written once, in the transaction that pressed the\n record. `RecordSoldEvent` also snapshots both the accepted `Price` and the amount\n paid, so an indexer can distinguish fixed sales from floor sales and compute tips\n without replaying listing state.",
   "immediate_dependencies": [
     {
       "address": "miso_pressing",
@@ -24,10 +24,6 @@
     {
       "address": "sui",
       "name": "clock"
-    },
-    {
-      "address": "sui",
-      "name": "coin"
     },
     {
       "address": "sui",
@@ -232,8 +228,26 @@
     "buy": {
       "source_index": 5,
       "index": 5,
-      "doc": " Buy one record: pay this listing's price, take the next number out of the pressing.\n\n `payment` must satisfy the price (exactly, for `Fixed`; at least, for `Floor`).\n The ENTIRE payment forwards to the release's address — under `Floor`, anything\n above the floor is kept as a tip, not refunded. The record's number is the\n pressing's next 1-based value, shared with every other currency selling the same\n run, and its UID is derived off the pressing. The sale's terms ride out on the\n record's `Certificate`. `settings` must authorize this package's `MintWitness`.\n\n Both switches must be open: this listing `Enabled`, checked here, and the pressing\n `Active`, checked in `pressing::mint_next`.",
-      "attributes": [],
+      "doc": " Buy one record: pay this listing's price, take the next number out of the pressing.\n\n `payment` is a bare `Balance<Currency>` and must satisfy the price (exactly, for\n `Fixed`; at least, for `Floor`). The ENTIRE payment forwards to the release's\n address — under `Floor`, anything above the floor is kept as a tip, not refunded.\n The record's number is the pressing's next 1-based value, shared with every other\n currency selling the same run, and its UID is derived off the pressing. The sale's\n terms ride out on the record's `Certificate`. `settings` must authorize this\n package's `MintWitness`.\n\n Both switches must be open: this listing `Enabled`, checked here, and the run\n selling at this moment, checked in `pressing::mint_next`.",
+      "attributes": [
+        {
+          "Parameterized": [
+            "allow",
+            [
+              {
+                "Parameterized": [
+                  "lint",
+                  [
+                    {
+                      "Name": "prefer_mut_tx_context"
+                    }
+                  ]
+                ]
+              }
+            ]
+          ]
+        }
+      ],
       "visibility": "Public",
       "entry": false,
       "type_parameters": [
@@ -292,9 +306,9 @@
             "Datatype": {
               "module": {
                 "address": "sui",
-                "name": "coin"
+                "name": "balance"
               },
-              "name": "Coin",
+              "name": "Balance",
               "type_arguments": [
                 {
                   "phantom": true,
@@ -858,50 +872,6 @@
         }
       ],
       "return_": [
-        "u64"
-      ]
-    },
-    "price_terms": {
-      "source_index": 15,
-      "index": 15,
-      "doc": null,
-      "attributes": [],
-      "visibility": "Public",
-      "entry": false,
-      "type_parameters": [
-        {
-          "name": "Currency",
-          "constraints": []
-        }
-      ],
-      "parameters": [
-        {
-          "name": "self",
-          "type_": {
-            "Reference": [
-              false,
-              {
-                "Datatype": {
-                  "module": {
-                    "address": "miso_pressing",
-                    "name": "listing"
-                  },
-                  "name": "Listing",
-                  "type_arguments": [
-                    {
-                      "phantom": true,
-                      "argument": {
-                        "NamedTypeParameter": "Currency"
-                      }
-                    }
-                  ]
-                }
-              }
-            ]
-          }
-        }
-      ],
-      "return_": [
         {
           "Datatype": {
             "module": {
@@ -915,8 +885,8 @@
       ]
     },
     "state": {
-      "source_index": 16,
-      "index": 16,
+      "source_index": 15,
+      "index": 15,
       "doc": null,
       "attributes": [],
       "visibility": "Public",
@@ -967,98 +937,10 @@
         }
       ]
     },
-    "is_enabled": {
-      "source_index": 17,
-      "index": 17,
-      "doc": null,
-      "attributes": [],
-      "visibility": "Public",
-      "entry": false,
-      "type_parameters": [
-        {
-          "name": "Currency",
-          "constraints": []
-        }
-      ],
-      "parameters": [
-        {
-          "name": "self",
-          "type_": {
-            "Reference": [
-              false,
-              {
-                "Datatype": {
-                  "module": {
-                    "address": "miso_pressing",
-                    "name": "listing"
-                  },
-                  "name": "Listing",
-                  "type_arguments": [
-                    {
-                      "phantom": true,
-                      "argument": {
-                        "NamedTypeParameter": "Currency"
-                      }
-                    }
-                  ]
-                }
-              }
-            ]
-          }
-        }
-      ],
-      "return_": [
-        "bool"
-      ]
-    },
-    "is_disabled": {
-      "source_index": 18,
-      "index": 18,
-      "doc": null,
-      "attributes": [],
-      "visibility": "Public",
-      "entry": false,
-      "type_parameters": [
-        {
-          "name": "Currency",
-          "constraints": []
-        }
-      ],
-      "parameters": [
-        {
-          "name": "self",
-          "type_": {
-            "Reference": [
-              false,
-              {
-                "Datatype": {
-                  "module": {
-                    "address": "miso_pressing",
-                    "name": "listing"
-                  },
-                  "name": "Listing",
-                  "type_arguments": [
-                    {
-                      "phantom": true,
-                      "argument": {
-                        "NamedTypeParameter": "Currency"
-                      }
-                    }
-                  ]
-                }
-              }
-            ]
-          }
-        }
-      ],
-      "return_": [
-        "bool"
-      ]
-    },
     "is_live": {
-      "source_index": 19,
-      "index": 19,
-      "doc": " Whether `buy` would be accepted right now: the right pressing, this currency\n enabled, and the run not paused.",
+      "source_index": 16,
+      "index": 16,
+      "doc": " Whether `buy` would be accepted right now: the right pressing, this currency\n enabled, and the run selling at this moment (open, and past its drop time if it\n has one).",
       "attributes": [],
       "visibility": "Public",
       "entry": false,
@@ -1111,6 +993,24 @@
               }
             ]
           }
+        },
+        {
+          "name": "clock",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "sui",
+                    "name": "clock"
+                  },
+                  "name": "Clock",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
         }
       ],
       "return_": [
@@ -1118,8 +1018,8 @@
       ]
     },
     "amount": {
-      "source_index": 20,
-      "index": 20,
+      "source_index": 17,
+      "index": 17,
       "doc": " The price amount (the fixed price, or the floor).",
       "attributes": [],
       "visibility": "Public",
@@ -1147,6 +1047,50 @@
       ],
       "return_": [
         "u64"
+      ]
+    },
+    "is_enabled": {
+      "source_index": 18,
+      "index": 18,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Private",
+      "entry": false,
+      "type_parameters": [
+        {
+          "name": "Currency",
+          "constraints": []
+        }
+      ],
+      "parameters": [
+        {
+          "name": "self",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso_pressing",
+                    "name": "listing"
+                  },
+                  "name": "Listing",
+                  "type_arguments": [
+                    {
+                      "phantom": true,
+                      "argument": {
+                        "NamedTypeParameter": "Currency"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        "bool"
       ]
     }
   },
@@ -1269,7 +1213,7 @@
     },
     "ListingOpenedEvent": {
       "index": 2,
-      "doc": null,
+      "doc": " A currency listing's initial identity, terms, and state.",
       "attributes": [],
       "abilities": [
         "Copy",
@@ -1360,7 +1304,7 @@
     },
     "RecordSoldEvent": {
       "index": 3,
-      "doc": null,
+      "doc": " The accepted offer and resulting record for one sale. `Currency` is carried in the\n event type, while `price` and `paid` preserve the ask and the actual payment.",
       "attributes": [],
       "abilities": [
         "Copy",
@@ -1437,13 +1381,27 @@
             "doc": null,
             "type_": "u64"
           },
-          "paid": {
+          "price": {
             "index": 5,
+            "doc": " The offer accepted by this sale. Together with `paid`, this distinguishes a\n fixed-price sale from a floor-price sale and makes any tip directly computable.",
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "miso_pressing",
+                  "name": "listing"
+                },
+                "name": "Price",
+                "type_arguments": []
+              }
+            }
+          },
+          "paid": {
+            "index": 6,
             "doc": null,
             "type_": "u64"
           },
           "buyer": {
-            "index": 6,
+            "index": 7,
             "doc": null,
             "type_": "address"
           }
@@ -1452,7 +1410,7 @@
     },
     "ListingStateChangedEvent": {
       "index": 4,
-      "doc": null,
+      "doc": " A currency listing's new enabled/disabled state.",
       "attributes": [],
       "abilities": [
         "Copy",
@@ -1515,7 +1473,7 @@
     },
     "ListingPriceChangedEvent": {
       "index": 5,
-      "doc": null,
+      "doc": " A currency listing's new standing price.",
       "attributes": [],
       "abilities": [
         "Copy",
