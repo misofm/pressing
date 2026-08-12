@@ -177,7 +177,7 @@ Depends on [`miso-record`](https://github.com/misonetwork/miso-record) (the `Rec
 sibling checkouts under `misonetwork/`:
 
 ```toml
-miso = { local = "../../miso-protocol/move" }
+miso = { local = "../../miso-protocol" }
 miso_record = { local = "../../miso-record/move" }
 ```
 
