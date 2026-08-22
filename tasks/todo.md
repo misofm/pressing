@@ -1,5 +1,10 @@
 # miso-pressing redesign — one pressing, one uncapped run, no editions
 
+> **2026-08-22 — superseded.** The historical design below used `Settings`,
+> `MintWitness`, and a dynamic-field certificate. The implemented architecture now
+> embeds a package-constructed `Certificate` directly in `Record<Certificate>`; the
+> current source, tests, and README are authoritative.
+
 Supersedes the Drop / Edition / Listing restructure (see git history for that plan).
 
 ## Sixth revision (2026-07-31, settled with cofounder)

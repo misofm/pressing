@@ -29,8 +29,9 @@ Release
   computation — no registry, no pointer to maintain, and **no stored set of listings**: a
   listing either exists at its derived address or it does not (`listing::has_listing`),
   and `ListingOpenedEvent<Currency>` enumerates them for an indexer. The numbers are
-  gap-free by construction, and `pressing::verify_record(&record)` checks provenance
-  from chain state alone.
+  gap-free by construction. A consumer can check provenance directly: the embedded
+  certificate's `parent_id` is the pressing id, and the record id must equal
+  `record::derive_address(parent_id, number).to_id()`.
 
 - **The listing key is phantom-typed.** `ListingKey<Currency>()` puts the currency in
   the key's *type* rather than in a stored `TypeName`, so distinct currencies are
@@ -84,16 +85,16 @@ Release
   permanent run has nothing to count down to, and a time-limited sale is scarcity
   theater this design rejects. Ending a campaign is `set_state(Paused)`.
 
-- **One certificate, on the record.** A number is only meaningful inside the sequence
-  that issued it, and what a copy sold for is a fact about the same sale — so they are
-  one field, written once: `mint_next` stamps
-  `Certificate { number, purchase_currency, purchase_price }` in the
-  transaction that presses the record (`certificate::of(&record)`). It does not store
-  its pressing's or record's id: a release has exactly one pressing at a derived
-  address, and the record's id derives from that pressing plus the certificate number.
-  `pressing::verify_record` recomputes that address and checks it against the record.
-  The key is constructible only inside this package, so the field can be neither
-  forged nor detached.
+- **One embedded certificate.** A number is only meaningful inside the sequence that
+  issued it, and what a copy sold for is a fact about the same sale — so `mint_next`
+  creates `Certificate { parent_id, number, purchase_currency, purchase_price,
+  created_at_ms }` and passes it directly to `record::new`. The result is a
+  `Record<Certificate>` whose certificate is present from birth, cannot be detached,
+  and is read with `record.certificate()`. `Certificate` has `drop, store` but not
+  `copy`; its fields are private and its constructor is `public(package)`, so an
+  external package cannot construct this trusted specialization. The stored parent
+  and number also make provenance explicit: the record id must equal
+  `record::derive_address(certificate.parent_id(), certificate.number()).to_id()`.
 
 - **Two caps, split along the money.** Opening a pressing needs the release's
   `ReleaseAdminCap` (the protocol's `release::uid_mut` enforces it) and hands back a
@@ -107,11 +108,12 @@ Release
   release cap stays with the rightsholder. Both are `key, store`, so a vault or multisig
   can custody them — the package implements no recovery.
 
-- **Minting is authorized by type.** `buy` presents this package's `MintWitness` to
-  `miso_record`'s witness-gated `mint`; the witness type must be on the
-  `miso_record::Settings` allowlist. A different sale mechanic (auction, dutch,
-  giveaway…) is just another package with its own witness — same `Record`, no
-  `miso_record` redeploy.
+- **Minting authority is the certificate constructor.** `miso_record` intentionally
+  allows any package to create its own `Record<C>` specialization. Trust attaches to
+  the concrete certificate type: only this package can construct
+  `miso_pressing::certificate::Certificate`, and production construction occurs only
+  on the paid pressing path. There is no shared settings object, allowlist, or mint
+  witness in this architecture.
 
 ## Usage
 
@@ -133,7 +135,7 @@ Then, per sale:
 
 ```move
 // `payment` is a Balance<SUI> — off the buyer's accumulator, or `coin.into_balance()`.
-let record = listing.buy(&mut pressing, payment, &settings, &clock, ctx);
+let record: Record<Certificate> = listing.buy(&mut pressing, payment, &clock, ctx);
 ```
 
 Adding a currency to a live pressing is just another `listing::new` — once per currency,
@@ -166,19 +168,19 @@ the drift a shared view prevents. `authorize` and `uid` on the pressing are
 
 ```
 move/
-  sources/pressing.move     the run: the counter, the mint witness, the schedule + switch, the cap
+  sources/pressing.move     the run: counter, schedule + switch, certificate minting, cap
   sources/listing.move      one currency's offer: price, state, buy
-  sources/certificate.move  what a record carries out: number + what was paid
+  sources/certificate.move  embedded provenance: parent, number, currency, price, time
   tests/
 ```
 
-Depends on [`miso-record`](https://github.com/misonetwork/miso-record) (the `Record` +
-`Settings` mint authority) and the miso-protocol (`Release` / `ReleaseAdminCap`), as
-sibling checkouts under `misonetwork/`:
+Depends on [`miso-record`](https://github.com/misonetwork/miso-record) (the generic
+`Record<Certificate>`) and the miso-protocol (`Release` / `ReleaseAdminCap`), as
+local checkouts at the paths used by `move/Move.toml`:
 
 ```toml
-miso = { local = "../../miso-protocol" }
-miso_record = { local = "../../miso-record/move" }
+miso = { local = "../../../misonetwork/protocol" }
+miso_record = { local = "../../record/move" }
 ```
 
 ## Build
@@ -187,14 +189,13 @@ miso_record = { local = "../../miso-record/move" }
 cd move && sui move test
 ```
 
-## Testnet deployment
+## Publication status
 
-- Immutable `miso_pressing`: `0xe9c134a5c2d263a8e9893e6439f7c797bc9e7f65bc34e99610d53c1c6e7a631b`
-- Immutable `miso_record`: `0x2f0e3cf7257f7ba6ee1109c741f0ccc39f44c2da610052d165e7b514c1149fd2`
-- Shared record `Settings`: `0xbc8468ea6fae4a1a0ba8f0dd2554fa75d2d3e1bff7537f866ad7b4b2f8d96e86`
-- `SettingsAdminCap`: `0xfe6996468cd9a91c833d753df218cd311b3a8fa58c9085aac5104dcdca964c5a`
-- Immutable `miso`: `0x5bb3ec642b1f7debd8bc2acbc16232abe893844d5978431d1cc0fbdddad73b97`
-- Shared `ReleaseRegistry`: `0x3f202b6f89cf635f54bd7ddee7a21e73c77b88a10f1fc451571e9e931997e8d6`
-- `MintWitness` authorization transaction: `2M2AcrcddNVAzDkDCrYqr7yALLXvMqSuV5wqh8s5Va9a`
+This version requires a fresh publication. It is not a compatible upgrade of the
+legacy Testnet package: `miso_record::record::Record` is now generic over an embedded
+certificate, and this package's `Certificate` layout and abilities changed while the
+old `Settings`/`MintWitness` API was removed. Previously published package and object
+IDs therefore do not identify this architecture. The legacy `Published.toml` has been
+removed intentionally; a new one should be committed only after the fresh publication.
 
 License: Apache-2.0

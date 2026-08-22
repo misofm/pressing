@@ -3,23 +3,11 @@
     "address": "miso_pressing",
     "name": "certificate"
   },
-  "doc": " The pressing's certificate on a record.\n\n One struct holds everything the sale fixed about a copy: where it sits in the run,\n and what was paid for it. These were two dynamic fields — a certificate and a\n receipt — and separating them bought nothing: both are written once, in the same\n transaction, by the same call, and neither is meaningful without the other.\n\n A serial is only meaningful inside the sequence that issued it — a different\n production package counts from 1 again — so the number never travels alone. It\n does not need to carry its pressing's id to say which sequence it means: a release\n has exactly one pressing, at a derived address, so `pressing::derive_id(\n record.release_id())` recomputes it from the record itself. Storing it would be\n storing a value that is pure arithmetic on values already present.",
+  "doc": " Immutable provenance for a record pressed by `miso_pressing`.\n\n `Certificate` is embedded in `Record<Certificate>`, never attached as a dynamic\n field. Its private fields and package-only constructor mean an external package\n cannot construct this certificate or mint the trusted record specialization.",
   "immediate_dependencies": [
-    {
-      "address": "miso_record",
-      "name": "record"
-    },
-    {
-      "address": "std",
-      "name": "option"
-    },
     {
       "address": "std",
       "name": "type_name"
-    },
-    {
-      "address": "sui",
-      "name": "dynamic_field"
     },
     {
       "address": "sui",
@@ -28,10 +16,10 @@
   ],
   "attributes": [],
   "functions": {
-    "attach": {
+    "new": {
       "source_index": 0,
       "index": 0,
-      "doc": " Stamp the record with its certificate. Called once by `pressing::mint_next`, the\n single path every record takes into being — same transaction as the mint itself.",
+      "doc": " Create a certificate for a pressing path. Only modules in this package can call\n this constructor; `pressing::mint_next` is the sole production caller.",
       "attributes": [],
       "visibility": "Package",
       "entry": false,
@@ -43,21 +31,16 @@
       ],
       "parameters": [
         {
-          "name": "record",
+          "name": "parent_id",
           "type_": {
-            "Reference": [
-              true,
-              {
-                "Datatype": {
-                  "module": {
-                    "address": "miso_record",
-                    "name": "record"
-                  },
-                  "name": "Record",
-                  "type_arguments": []
-                }
-              }
-            ]
+            "Datatype": {
+              "module": {
+                "address": "sui",
+                "name": "object"
+              },
+              "name": "ID",
+              "type_arguments": []
+            }
           }
         },
         {
@@ -67,31 +50,46 @@
         {
           "name": "purchase_price",
           "type_": "u64"
+        },
+        {
+          "name": "created_at_ms",
+          "type_": "u64"
         }
       ],
-      "return_": []
+      "return_": [
+        {
+          "Datatype": {
+            "module": {
+              "address": "miso_pressing",
+              "name": "certificate"
+            },
+            "name": "Certificate",
+            "type_arguments": []
+          }
+        }
+      ]
     },
-    "of": {
+    "parent_id": {
       "source_index": 1,
       "index": 1,
-      "doc": " The certificate on `record`, or `none` for a record minted by some other package.\n The only way to read the field, since only this module can construct its key.",
+      "doc": null,
       "attributes": [],
       "visibility": "Public",
       "entry": false,
       "type_parameters": [],
       "parameters": [
         {
-          "name": "record",
+          "name": "self",
           "type_": {
             "Reference": [
               false,
               {
                 "Datatype": {
                   "module": {
-                    "address": "miso_record",
-                    "name": "record"
+                    "address": "miso_pressing",
+                    "name": "certificate"
                   },
-                  "name": "Record",
+                  "name": "Certificate",
                   "type_arguments": []
                 }
               }
@@ -103,25 +101,11 @@
         {
           "Datatype": {
             "module": {
-              "address": "std",
-              "name": "option"
+              "address": "sui",
+              "name": "object"
             },
-            "name": "Option",
-            "type_arguments": [
-              {
-                "phantom": false,
-                "argument": {
-                  "Datatype": {
-                    "module": {
-                      "address": "miso_pressing",
-                      "name": "certificate"
-                    },
-                    "name": "Certificate",
-                    "type_arguments": []
-                  }
-                }
-              }
-            ]
+            "name": "ID",
+            "type_arguments": []
           }
         }
       ]
@@ -230,35 +214,46 @@
       "return_": [
         "u64"
       ]
+    },
+    "created_at_ms": {
+      "source_index": 5,
+      "index": 5,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "self",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso_pressing",
+                    "name": "certificate"
+                  },
+                  "name": "Certificate",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        "u64"
+      ]
     }
   },
   "structs": {
-    "CertificateKey": {
-      "index": 0,
-      "doc": " Key for the `Certificate` dynamic field on a record. Constructible only inside\n this module — written exactly once, at mint, and never removable by anyone else.",
-      "attributes": [],
-      "abilities": [
-        "Copy",
-        "Drop",
-        "Store"
-      ],
-      "type_parameters": [],
-      "fields": {
-        "positional_fields": true,
-        "fields": {
-          "dummy_field": {
-            "index": 0,
-            "type_": "bool"
-          }
-        }
-      }
-    },
     "Certificate": {
-      "index": 1,
-      "doc": " A record's position in its pressing's run, and the terms it sold on.",
+      "index": 0,
+      "doc": " A pressing's immutable account of one record it produced.",
       "attributes": [],
       "abilities": [
-        "Copy",
         "Drop",
         "Store"
       ],
@@ -266,13 +261,27 @@
       "fields": {
         "positional_fields": false,
         "fields": {
-          "number": {
+          "parent_id": {
             "index": 0,
+            "doc": " The object whose derived-UID namespace issued this record.",
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "sui",
+                  "name": "object"
+                },
+                "name": "ID",
+                "type_arguments": []
+              }
+            }
+          },
+          "number": {
+            "index": 1,
             "doc": " Position in the pressing's run (1-based).",
             "type_": "u64"
           },
           "purchase_currency": {
-            "index": 1,
+            "index": 2,
             "doc": " The currency type the buyer paid in.",
             "type_": {
               "Datatype": {
@@ -286,8 +295,13 @@
             }
           },
           "purchase_price": {
-            "index": 2,
+            "index": 3,
             "doc": " The exact amount paid. Under a floor price this includes any tip above it.",
+            "type_": "u64"
+          },
+          "created_at_ms": {
+            "index": 4,
+            "doc": " The timestamp stamped from the shared Clock on the pressing path.",
             "type_": "u64"
           }
         }

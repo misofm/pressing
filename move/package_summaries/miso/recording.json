@@ -3,15 +3,15 @@
     "address": "miso",
     "name": "recording"
   },
-  "doc": " Represents an audio recording of a composition in Miso.\n Recordings are the audio performances that are distributed and played.\n Each recording has its own share token for ownership distribution.\n\n ### Key Features:\n\n - Share token initialization with fixed supply (10M tokens, 6 decimals)\n - State machine: Initialized -> Published (embedded fields immutable after\n   publish; dynamic fields remain extensible via `uid_mut`, e.g. masters,\n   and credits/attribution attached by the credits extension)\n - Deterministic addresses via derived object pattern\n\n Attribution (credits, primary/featured artists) is intentionally NOT part of\n core: it is display-oriented, varies across platforms, and is never read by\n the economics. It lives in a first-party credits extension attached via\n `uid_mut`, so core takes no dependency on an identity package and core\n publish enforces no attribution.\n\n A recording carries no name of its own. Its display title is its\n composition's title, read by reference — composition titles are immutable,\n so an embedded copy would carry no information. Anything that names this\n particular take — \"(Live)\", \"Radio Edit\", a translated title — has more\n than one correct rendering, which makes it presentation, and presentation\n lives in the metadata extension, never in the frozen core. Core stores what\n a recording *is*; extensions describe it.\n\n ### Lifecycle and trust model\n\n A recording is `key`-only with no `drop`: a fresh `Initialized` object\n cannot be transferred, wrapped, publicly shared, or discarded, and its only\n by-value consumer is `publish`. Create-and-publish is therefore atomic by\n construction — an `Initialized` recording cannot outlive its creating\n transaction, and every recording that exists on-chain is `Published` and\n shared. There is deliberately no keep function; staged building must fit\n one transaction.\n\n `uid_mut` works in any lifecycle state and is permanent root over ALL\n dynamic fields on the object — including fields attached by other\n extensions. \"Immutable after publish\" covers the embedded fields only;\n extension-layer data stays admin-mutable in perpetuity. This is the\n designed extension surface, and it is the one trust assumption that never\n expires: integrators should model the cap holder as able to mutate or\n delete any extension data, forever.\n\n The recording carries its parent composition's identity as the\n `CompositionShare` phantom type parameter — the composition's share type is\n its durable identity (a share currency is published independently of miso\n and survives a fresh republish, whereas an object ID does not). This makes\n the recording↔composition lineage compile-time enforced wherever the two\n meet, and it is the sole link: the composition's object id is not stored on\n the recording. Off-chain consumers that need the composition object resolve\n its share type to an id via `composition::CompositionPublishedEvent`, which\n binds the two.\n\n A recording is its own freshly-created object (`object::new`), not a derived\n child of its composition: `recording::new` takes a read-only `&Composition`\n (only to read its royalty rate and id), so publishing recordings under a\n composition neither contends on the composition's shared-object version nor\n collides on a per-composition index.",
+  "doc": " Represents an audio recording of a composition in Miso.\n Recordings are the audio performances that are distributed and played.\n Each recording has its own share token for ownership distribution.\n\n ### Key Features:\n\n - Share token initialization with fixed supply (10M tokens, 6 decimals)\n - State machine: Initialized -> Published (embedded fields immutable after\n   publish; dynamic fields remain extensible via `uid_mut`, e.g. masters,\n   and credits/attribution attached by the credits extension)\n - Deterministic addresses via derived object pattern\n\n Attribution (credits, primary/featured artists) is intentionally NOT part of\n core: it is display-oriented, varies across platforms, and is never read by\n the economics. It lives in a first-party credits extension attached via\n `uid_mut`, so core takes no dependency on an identity package and core\n publish enforces no attribution.\n\n A recording carries no name of its own. Its display title is its\n composition's title, read by reference — composition titles are immutable,\n so an embedded copy would carry no information. Anything that names this\n particular take — \"(Live)\", \"Radio Edit\", a translated title — has more\n than one correct rendering, which makes it presentation, and presentation\n lives in the metadata extension, never in the frozen core. Core stores what\n a recording *is*; extensions describe it.\n\n ### Lifecycle and trust model\n\n A recording is `key`-only with no `drop`: a fresh `Initialized` object\n cannot be transferred, wrapped, publicly shared, or discarded, and its only\n by-value consumer is `publish`. Create-and-publish is therefore atomic by\n construction — an `Initialized` recording cannot outlive its creating\n transaction, and every recording that exists on-chain is `Published` and\n shared. There is deliberately no keep function; staged building must fit\n one transaction.\n\n `uid_mut` works in any lifecycle state and is permanent root over ALL\n dynamic fields on the object — including fields attached by other\n extensions. \"Immutable after publish\" covers the embedded fields only;\n extension-layer data stays admin-mutable in perpetuity. This is the\n designed extension surface, and it is the one trust assumption that never\n expires: integrators should model the cap holder as able to mutate or\n delete any extension data, forever.\n\n The recording carries its parent composition's identity two ways. The\n `CompositionShare` phantom type parameter is the durable identity (a share\n currency is published independently of miso and survives a fresh\n republish, whereas an object ID does not) and makes the\n recording↔composition lineage compile-time enforced wherever the two meet.\n The embedded `composition_id` is the address-level handle: Move cannot\n chase a type (or an ID) to an object, so on-chain consumers holding only\n `&Recording` — or a bare `Track` — could not otherwise reach the\n composition at all. Both are set at creation and immutable, so they cannot\n diverge.\n\n A recording is its own freshly-created object (`object::new`), not a derived\n child of its composition: `recording::new` takes a read-only `&Composition`\n (only to read its royalty rate and id), so publishing recordings under a\n composition neither contends on the composition's shared-object version nor\n collides on a per-composition index.",
   "immediate_dependencies": [
-    {
-      "address": "0x829f308ea13acc31495dae5d9d95b3967816e6271c043e6949e7418039107411",
-      "name": "share"
-    },
     {
       "address": "0x93b3b214ad031ef9c340543eeafccac74d6a9232ce9506751fbeccea850a0823",
       "name": "bps"
+    },
+    {
+      "address": "0xc7ce7f2187add1e5cffa21ad7f10f2ea43ebde6ddfa0921030b37057724840fd",
+      "name": "share"
     },
     {
       "address": "miso",
@@ -59,7 +59,7 @@
     "new": {
       "source_index": 0,
       "index": 0,
-      "doc": " Creates a new recording for a composition.\n\n Initializes share tokens (10M supply, 6 decimals), then splits the\n composition's royalty-rate worth of those shares off the freshly minted\n supply and `send_funds`es them to the composition's address. This settles\n the composition's cut as cap-table ownership: the composition literally\n owns its share of the recording, so its claim on recording revenue is\n enforced by share ownership rather than by any revenue distributor choosing\n to honor a rate. What the composition owner then does with the shares\n (hold, stake, sell) is outside the protocol's scope.\n\n `max_royalty_rate_bps` is a slippage guard: `new` reads the composition's\n royalty rate live off a shared object, so a composition owner could land a\n rate increase in a transaction ordered just before this one and capture more\n of the recording's shares than the recorder saw. The call aborts if the\n composition's current rate exceeds `max_royalty_rate_bps`, so the recorder\n pins the most they will grant (pass the rate they observed, or `2000` to\n accept up to the protocol maximum).\n\n The composition need not be `Published`: within the composition's own\n creating transaction its creator can already mint recordings against it.\n Third parties only ever see `Published`, shared compositions (an\n `Initialized` one cannot escape its creating transaction), so indexers may\n observe a recording created \"against an unpublished composition\" only as\n an intra-transaction ordering, never across transactions.\n\n Returns:\n - The recording object (typed to its parent composition's `CompositionShare`)\n - Admin capability for the owner\n - The creator's remaining share balance (full supply minus the\n   composition's cut)",
+      "doc": " Creates a new recording for a composition.\n\n Initializes share tokens (10M supply, 6 decimals), then splits the\n composition's royalty-rate worth of those shares off the freshly minted\n supply and `send_funds`es them to the composition's address. This settles\n the composition's cut as cap-table ownership: the composition literally\n owns its share of the recording, so its claim on recording revenue is\n enforced by share ownership rather than by any revenue distributor choosing\n to honor a rate. What the composition owner then does with the shares\n (hold, stake, sell) is outside the protocol's scope.\n\n The composition's royalty rate is immutable, so the rate a recorder's\n client displayed is exactly the rate applied here — no slippage protection\n is needed or possible. Whether that rate is acceptable is the recorder's\n decision to make before calling; per-deal deviations settle as voluntary\n share transfers after creation.\n\n The composition need not be `Published`: within the composition's own\n creating transaction its creator can already mint recordings against it.\n Third parties only ever see `Published`, shared compositions (an\n `Initialized` one cannot escape its creating transaction), so indexers may\n observe a recording created \"against an unpublished composition\" only as\n an intra-transaction ordering, never across transactions.\n\n Returns:\n - The recording object (typed to its parent composition's `CompositionShare`)\n - Admin capability for the owner\n - The creator's remaining share balance (full supply minus the\n   composition's cut)",
       "attributes": [],
       "visibility": "Public",
       "entry": false,
@@ -143,10 +143,6 @@
               ]
             }
           }
-        },
-        {
-          "name": "max_royalty_rate_bps",
-          "type_": "u16"
         },
         {
           "name": "ctx",
@@ -317,10 +313,10 @@
       ],
       "return_": []
     },
-    "id": {
+    "composition_id": {
       "source_index": 2,
       "index": 2,
-      "doc": " Returns the recording's object ID.",
+      "doc": " Returns the object ID of the parent composition. An identity/membership\n handle (the address-level counterpart of the `CompositionShare` phantom) —\n not a revenue routing target: the composition is paid via its\n recording-share ownership.",
       "attributes": [],
       "visibility": "Public",
       "entry": false,
@@ -589,6 +585,20 @@
                   "name": "recording"
                 },
                 "name": "RecordingState",
+                "type_arguments": []
+              }
+            }
+          },
+          "composition_id": {
+            "index": 2,
+            "doc": " Object ID of the parent composition. The address-level counterpart of\n the `CompositionShare` phantom, set from the `&Composition` passed to\n `new` (the shared phantom proves the pairing). An identity handle —\n not a revenue routing target: the composition is paid through its\n recording-share ownership, settled at creation.",
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "sui",
+                  "name": "object"
+                },
+                "name": "ID",
                 "type_arguments": []
               }
             }
