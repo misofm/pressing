@@ -58,9 +58,9 @@
 /// without replaying listing state.
 module miso_pressing::listing;
 
+use miso_pressing::certificate::Certificate;
 use miso_pressing::pressing::{Pressing, PressingAdminCap};
 use miso_record::record::Record;
-use miso_record::settings::Settings;
 use sui::balance::{Self, Balance};
 use sui::clock::Clock;
 use sui::derived_object;
@@ -227,8 +227,7 @@ public fun new<Currency>(
 /// address — under `Floor`, anything above the floor is kept as a tip, not refunded.
 /// The record's number is the pressing's next 1-based value, shared with every other
 /// currency selling the same run, and its UID is derived off the pressing. The sale's
-/// terms ride out on the record's `Certificate`. `settings` must authorize this
-/// package's `MintWitness`.
+/// terms are embedded in the record's `Certificate`.
 ///
 /// Both switches must be open: this listing `Enabled`, checked here, and the run
 /// selling at this moment, checked in `pressing::mint_next`.
@@ -237,10 +236,9 @@ public fun buy<Currency>(
     self: &mut Listing<Currency>,
     pressing: &mut Pressing,
     payment: Balance<Currency>,
-    settings: &Settings,
     clock: &Clock,
     ctx: &TxContext,
-): Record {
+): Record<Certificate> {
     assert!(self.pressing_id == object::id(pressing), EWrongPressing);
     assert!(self.is_enabled(), EListingDisabled);
 
@@ -260,8 +258,8 @@ public fun buy<Currency>(
     };
 
     // The pressing owns the number, checks the run-wide switch, stamps the record's
-    // birth date off the clock, and certifies it with what was just paid.
-    let record = pressing.mint_next<Currency>(settings, paid, clock, ctx);
+    // birth date off the clock, and embeds what was just paid in its certificate.
+    let record = pressing.mint_next<Currency>(paid, clock);
 
     emit(RecordSoldEvent<Currency> {
         listing_id: self.id.to_inner(),

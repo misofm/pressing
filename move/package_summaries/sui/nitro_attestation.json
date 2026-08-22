@@ -181,7 +181,7 @@
     "pcrs": {
       "source_index": 4,
       "index": 4,
-      "doc": " Returns a list of mapping PCREntry containg the index and the PCR bytes.\n AWS supports PCR0-31. Required PCRs (index 0-4 & 8) are always included regardless of their \n value. Additional custom PCRs (index 5-7, 9-31) are also included if they are nonzeros.",
+      "doc": " Returns a list of mapping PCREntry containg the index and the PCR bytes.\n AWS supports PCR0-31. Required PCRs (index 0-4 & 8) are always included regardless of their\n value. Additional custom PCRs (index 5-7, 9-31) are also included if they are nonzeros.",
       "attributes": [],
       "visibility": "Public",
       "entry": false,

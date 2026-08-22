@@ -28,7 +28,7 @@
 /// not (`listing::has_listing`), and `ListingOpenedEvent<Currency>` enumerates them
 /// for an indexer. It also makes the number sequence gap-free for free, and every
 /// record verifiable against its pressing from chain state alone
-/// (`verify_record`).
+/// by comparing the certificate and derived address.
 ///
 /// # Starting and stopping is state, never teardown
 ///
@@ -63,9 +63,8 @@
 module miso_pressing::pressing;
 
 use miso::release::{Release, ReleaseAdminCap};
-use miso_pressing::certificate;
+use miso_pressing::certificate::{Self, Certificate};
 use miso_record::record::{Self, Record};
-use miso_record::settings::Settings;
 use sui::clock::Clock;
 use sui::derived_object;
 use sui::event::emit;
@@ -81,12 +80,6 @@ public struct PressingKey() has copy, drop, store;
 
 /// Key for deriving the `PressingAdminCap`'s UID off the PRESSING's UID.
 public struct PressingAdminCapKey() has copy, drop, store;
-
-/// Witness authorizing `miso_record` mints. Constructible only inside this package,
-/// and produced only on `mint_next`'s path — so possessing a value of it proves a
-/// mint went through the pressing's counter. `miso_record::Settings` must authorize
-/// this *type* to mint.
-public struct MintWitness has drop {}
 
 /// A release's record production: one uncapped run. Owns the number sequence the
 /// records derive from, and the switch that stops the whole run. Never destroyed.
@@ -243,17 +236,15 @@ public(package) fun uid(self: &Pressing): &UID {
 }
 
 /// Press the next record in the run: advance the counter, derive the record's UID off
-/// this pressing at the new number, and stamp its certificate in the same transaction
-/// (`miso_pressing::certificate`). The 1-based number is unique across every currency
-/// the pressing sells in. Aborts if the run is paused or has not opened yet — the
-/// run-wide switch is checked here, so no sale path can miss it.
+/// this pressing at the new number, and embed its certificate in the same transaction.
+/// The 1-based number is unique across every currency the pressing sells in. Aborts
+/// if the run is paused or has not opened yet — the run-wide switch is checked here,
+/// so no sale path can miss it.
 public(package) fun mint_next<Currency>(
     self: &mut Pressing,
-    settings: &Settings,
     purchase_price: u64,
     clock: &Clock,
-    ctx: &TxContext,
-): Record {
+): Record<Certificate> {
     // Settle the schedule before any sales logic. A `Scheduled` run past its start
     // becomes `Active` right here — the clock is the only authority that transition
     // needs, and this is the one place a sale can reach it.
@@ -271,17 +262,18 @@ public(package) fun mint_next<Currency>(
     };
 
     self.supply = self.supply + 1;
-    let mut record = record::mint(
-        MintWitness {},
-        settings,
+    let certificate = certificate::new<Currency>(
+        self.id.to_inner(),
+        self.supply,
+        purchase_price,
+        clock.timestamp_ms(),
+    );
+    record::new(
         &mut self.id,
+        certificate,
         self.release_id,
         self.supply,
-        clock,
-        ctx,
-    );
-    certificate::attach<Currency>(&mut record, self.supply, purchase_price);
-    record
+    )
 }
 
 /// The pressing's UID, for deriving a listing off it.
@@ -330,18 +322,6 @@ public fun pressing_admin_cap_pressing_id(cap: &PressingAdminCap): ID {
     cap.pressing_id
 }
 
-/// Whether `record` is genuinely the copy its certificate claims it is, checked from
-/// chain state alone and without needing the `Pressing` object.
-///
-/// The record must sit at exactly the address its certificate number derives to off
-/// its release's pressing. The certificate is the readable form of what the address
-/// already proves.
-public fun verify_record(record: &Record): bool {
-    certificate::of(record).is_some_and!(|cert| {
-        record::derive_id(derive_id(record.release_id()), cert.number()) == object::id(record)
-    })
-}
-
 //=== Test Helpers ===
 
 // The state predicates below are `#[test_only]` on purpose. Each is a one-line
@@ -384,12 +364,12 @@ public fun start_timestamp_ms(self: &Pressing): Option<u64> {
 }
 
 /// The id of record `number`, or `none` if the pressing has not pressed that many.
-/// Composes `supply()` with `record::derive_id`, so it is a convenience, not a
+/// Composes `supply()` with `record::derive_address`, so it is a convenience, not a
 /// capability.
 #[test_only]
 public fun record_id(self: &Pressing, number: u64): Option<ID> {
     if (number == 0 || number > self.supply) return option::none();
-    option::some(record::derive_id(self.id.to_inner(), number))
+    option::some(record::derive_address(self.id.to_inner(), number).to_id())
 }
 
 /// Where `pressing_id`'s admin cap was minted. The cap is transferable, so this is not

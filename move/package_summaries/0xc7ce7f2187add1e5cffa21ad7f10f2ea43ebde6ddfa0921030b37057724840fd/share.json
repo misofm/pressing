@@ -1,6 +1,6 @@
 {
   "id": {
-    "address": "0x829f308ea13acc31495dae5d9d95b3967816e6271c043e6949e7418039107411",
+    "address": "0xc7ce7f2187add1e5cffa21ad7f10f2ea43ebde6ddfa0921030b37057724840fd",
     "name": "share"
   },
   "doc": " Fixed-supply currency issuance for representing equity-like ownership stakes.\n\n ### Usage:\n\n 1. Create a package with a `share` module containing a `Share` type\n 2. Create a currency with `sui::coin_registry::new_currency`\n 3. Delete the metadata cap via `finalize_and_delete_metadata_cap`\n 4. Call `share::share::initialize` with the currency and treasury cap\n 5. Distribute the returned balance to shareholders",

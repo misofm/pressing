@@ -1,0 +1,2427 @@
+{
+  "id": {
+    "address": "sui",
+    "name": "scratch"
+  },
+  "doc": " `sui::scratch` is an ephemeral, per-transaction key-value store. Unlike `sui::dynamic_field`,\n scratch entries are not attached to any object, and are instead dropped at the end of the\n transaction.\n\n Each entry is identified by the pair of its key type and key value, hashed together in the same\n way as a dynamic field name (see `sui::dynamic_field::hash_type_and_key`).\n\n All access (mutable and immutable) is controlled through the module that defines the key type\n `K`. The functions are gated by a `Permit<K>`, which can be granted via an\n `internal::Permit<K>`.",
+  "immediate_dependencies": [
+    {
+      "address": "std",
+      "name": "internal"
+    },
+    {
+      "address": "std",
+      "name": "option"
+    },
+    {
+      "address": "sui",
+      "name": "dynamic_field"
+    },
+    {
+      "address": "sui",
+      "name": "tx_context"
+    }
+  ],
+  "attributes": [
+    {
+      "Parameterized": [
+        "allow",
+        [
+          {
+            "Name": "unused_const"
+          }
+        ]
+      ]
+    }
+  ],
+  "functions": {
+    "permit": {
+      "source_index": 0,
+      "index": 0,
+      "doc": " Issues a `Permit<K>` from the privileged `internal::Permit<K>`, granting access to the\n scratch entries keyed by values of type `K`.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [
+        {
+          "name": "K",
+          "constraints": [
+            "Copy",
+            "Drop"
+          ]
+        }
+      ],
+      "parameters": [
+        {
+          "name": "_",
+          "type_": {
+            "Datatype": {
+              "module": {
+                "address": "std",
+                "name": "internal"
+              },
+              "name": "Permit",
+              "type_arguments": [
+                {
+                  "phantom": true,
+                  "argument": {
+                    "NamedTypeParameter": "K"
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "return_": [
+        {
+          "Datatype": {
+            "module": {
+              "address": "sui",
+              "name": "scratch"
+            },
+            "name": "Permit",
+            "type_arguments": [
+              {
+                "phantom": true,
+                "argument": {
+                  "NamedTypeParameter": "K"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "add": {
+      "source_index": 1,
+      "index": 1,
+      "doc": " Adds the `key`-`value` pair to the scratch store. Requires a `Permit<K>` for the key type.\n Aborts with `EEntryAlreadyExists` if there is already an entry for `key`, regardless of its\n value type.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [
+        {
+          "name": "K",
+          "constraints": [
+            "Copy",
+            "Drop"
+          ]
+        },
+        {
+          "name": "V",
+          "constraints": [
+            "Drop"
+          ]
+        }
+      ],
+      "parameters": [
+        {
+          "name": "_",
+          "type_": {
+            "Reference": [
+              true,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "sui",
+                    "name": "tx_context"
+                  },
+                  "name": "TxContext",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "_",
+          "type_": {
+            "Datatype": {
+              "module": {
+                "address": "sui",
+                "name": "scratch"
+              },
+              "name": "Permit",
+              "type_arguments": [
+                {
+                  "phantom": true,
+                  "argument": {
+                    "NamedTypeParameter": "K"
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "key",
+          "type_": {
+            "NamedTypeParameter": "K"
+          }
+        },
+        {
+          "name": "value",
+          "type_": {
+            "NamedTypeParameter": "V"
+          }
+        }
+      ],
+      "return_": []
+    },
+    "read": {
+      "source_index": 2,
+      "index": 2,
+      "doc": " Returns a copy of the value bound to `key`. Requires a `Permit<K>` for the key type.\n Aborts with `EEntryDoesNotExist` if there is no entry for `key`.\n Aborts with `EEntryTypeMismatch` if the entry exists, but its value is not of type `V`.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [
+        {
+          "name": "K",
+          "constraints": [
+            "Copy",
+            "Drop"
+          ]
+        },
+        {
+          "name": "V",
+          "constraints": [
+            "Copy",
+            "Drop"
+          ]
+        }
+      ],
+      "parameters": [
+        {
+          "name": "_",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "sui",
+                    "name": "tx_context"
+                  },
+                  "name": "TxContext",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "_",
+          "type_": {
+            "Datatype": {
+              "module": {
+                "address": "sui",
+                "name": "scratch"
+              },
+              "name": "Permit",
+              "type_arguments": [
+                {
+                  "phantom": true,
+                  "argument": {
+                    "NamedTypeParameter": "K"
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "key",
+          "type_": {
+            "NamedTypeParameter": "K"
+          }
+        }
+      ],
+      "return_": [
+        {
+          "NamedTypeParameter": "V"
+        }
+      ]
+    },
+    "remove": {
+      "source_index": 3,
+      "index": 3,
+      "doc": " Removes the entry bound to `key` and returns its value. Requires a `Permit<K>` for the key type.\n Aborts with `EEntryDoesNotExist` if there is no entry for `key`.\n Aborts with `EEntryTypeMismatch` if the entry exists, but its value is not of type `V`.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [
+        {
+          "name": "K",
+          "constraints": [
+            "Copy",
+            "Drop"
+          ]
+        },
+        {
+          "name": "V",
+          "constraints": [
+            "Drop"
+          ]
+        }
+      ],
+      "parameters": [
+        {
+          "name": "_",
+          "type_": {
+            "Reference": [
+              true,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "sui",
+                    "name": "tx_context"
+                  },
+                  "name": "TxContext",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "_",
+          "type_": {
+            "Datatype": {
+              "module": {
+                "address": "sui",
+                "name": "scratch"
+              },
+              "name": "Permit",
+              "type_arguments": [
+                {
+                  "phantom": true,
+                  "argument": {
+                    "NamedTypeParameter": "K"
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "key",
+          "type_": {
+            "NamedTypeParameter": "K"
+          }
+        }
+      ],
+      "return_": [
+        {
+          "NamedTypeParameter": "V"
+        }
+      ]
+    },
+    "exists": {
+      "source_index": 4,
+      "index": 4,
+      "doc": " Returns true if and only if the scratch store has an entry for `key`, without regard to the\n value type. Requires a `Permit<K>` for the key type.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [
+        {
+          "name": "K",
+          "constraints": [
+            "Copy",
+            "Drop"
+          ]
+        }
+      ],
+      "parameters": [
+        {
+          "name": "_",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "sui",
+                    "name": "tx_context"
+                  },
+                  "name": "TxContext",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "_",
+          "type_": {
+            "Datatype": {
+              "module": {
+                "address": "sui",
+                "name": "scratch"
+              },
+              "name": "Permit",
+              "type_arguments": [
+                {
+                  "phantom": true,
+                  "argument": {
+                    "NamedTypeParameter": "K"
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "key",
+          "type_": {
+            "NamedTypeParameter": "K"
+          }
+        }
+      ],
+      "return_": [
+        "bool"
+      ]
+    },
+    "exists_with_type": {
+      "source_index": 5,
+      "index": 5,
+      "doc": " Returns true if and only if the scratch store has an entry for `key` whose value is of type `V`.\n Requires a `Permit<K>` for the key type.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [
+        {
+          "name": "K",
+          "constraints": [
+            "Copy",
+            "Drop"
+          ]
+        },
+        {
+          "name": "V",
+          "constraints": [
+            "Drop"
+          ]
+        }
+      ],
+      "parameters": [
+        {
+          "name": "_",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "sui",
+                    "name": "tx_context"
+                  },
+                  "name": "TxContext",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "_",
+          "type_": {
+            "Datatype": {
+              "module": {
+                "address": "sui",
+                "name": "scratch"
+              },
+              "name": "Permit",
+              "type_arguments": [
+                {
+                  "phantom": true,
+                  "argument": {
+                    "NamedTypeParameter": "K"
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "key",
+          "type_": {
+            "NamedTypeParameter": "K"
+          }
+        }
+      ],
+      "return_": [
+        "bool"
+      ]
+    },
+    "read_opt": {
+      "source_index": 6,
+      "index": 6,
+      "doc": " Returns a copy of the value bound to `key` as `some(value)` if it exists, or `none` otherwise.\n Aborts with `EEntryTypeMismatch` if the entry exists, but its value is not of type `V`.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [
+        {
+          "name": "K",
+          "constraints": [
+            "Copy",
+            "Drop"
+          ]
+        },
+        {
+          "name": "V",
+          "constraints": [
+            "Copy",
+            "Drop"
+          ]
+        }
+      ],
+      "parameters": [
+        {
+          "name": "ctx",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "sui",
+                    "name": "tx_context"
+                  },
+                  "name": "TxContext",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "permit",
+          "type_": {
+            "Datatype": {
+              "module": {
+                "address": "sui",
+                "name": "scratch"
+              },
+              "name": "Permit",
+              "type_arguments": [
+                {
+                  "phantom": true,
+                  "argument": {
+                    "NamedTypeParameter": "K"
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "key",
+          "type_": {
+            "NamedTypeParameter": "K"
+          }
+        }
+      ],
+      "return_": [
+        {
+          "Datatype": {
+            "module": {
+              "address": "std",
+              "name": "option"
+            },
+            "name": "Option",
+            "type_arguments": [
+              {
+                "phantom": false,
+                "argument": {
+                  "NamedTypeParameter": "V"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "remove_opt": {
+      "source_index": 7,
+      "index": 7,
+      "doc": " Removes the entry bound to `key` if it exists, returning `some(value)`, or `none` otherwise.\n Aborts with `EEntryTypeMismatch` if the entry exists, but its value is not of type `V`.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [
+        {
+          "name": "K",
+          "constraints": [
+            "Copy",
+            "Drop"
+          ]
+        },
+        {
+          "name": "V",
+          "constraints": [
+            "Drop"
+          ]
+        }
+      ],
+      "parameters": [
+        {
+          "name": "ctx",
+          "type_": {
+            "Reference": [
+              true,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "sui",
+                    "name": "tx_context"
+                  },
+                  "name": "TxContext",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "permit",
+          "type_": {
+            "Datatype": {
+              "module": {
+                "address": "sui",
+                "name": "scratch"
+              },
+              "name": "Permit",
+              "type_arguments": [
+                {
+                  "phantom": true,
+                  "argument": {
+                    "NamedTypeParameter": "K"
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "key",
+          "type_": {
+            "NamedTypeParameter": "K"
+          }
+        }
+      ],
+      "return_": [
+        {
+          "Datatype": {
+            "module": {
+              "address": "std",
+              "name": "option"
+            },
+            "name": "Option",
+            "type_arguments": [
+              {
+                "phantom": false,
+                "argument": {
+                  "NamedTypeParameter": "V"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "replace": {
+      "source_index": 8,
+      "index": 8,
+      "doc": " Removes the existing value at `key` (if any) and adds `value` in its place.\n Returns the old value if it existed, or `none` otherwise.\n Note: the old and new value types may differ.\n Aborts with `EEntryTypeMismatch` if the entry exists, but its value is not of type `VOld`.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [
+        {
+          "name": "K",
+          "constraints": [
+            "Copy",
+            "Drop"
+          ]
+        },
+        {
+          "name": "VNew",
+          "constraints": [
+            "Drop"
+          ]
+        },
+        {
+          "name": "VOld",
+          "constraints": [
+            "Drop"
+          ]
+        }
+      ],
+      "parameters": [
+        {
+          "name": "ctx",
+          "type_": {
+            "Reference": [
+              true,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "sui",
+                    "name": "tx_context"
+                  },
+                  "name": "TxContext",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "permit",
+          "type_": {
+            "Datatype": {
+              "module": {
+                "address": "sui",
+                "name": "scratch"
+              },
+              "name": "Permit",
+              "type_arguments": [
+                {
+                  "phantom": true,
+                  "argument": {
+                    "NamedTypeParameter": "K"
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "key",
+          "type_": {
+            "NamedTypeParameter": "K"
+          }
+        },
+        {
+          "name": "value",
+          "type_": {
+            "NamedTypeParameter": "VNew"
+          }
+        }
+      ],
+      "return_": [
+        {
+          "Datatype": {
+            "module": {
+              "address": "std",
+              "name": "option"
+            },
+            "name": "Option",
+            "type_arguments": [
+              {
+                "phantom": false,
+                "argument": {
+                  "NamedTypeParameter": "VOld"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "begin_borrow": {
+      "source_index": 9,
+      "index": 9,
+      "doc": " Not intended for direct usage. Instead, call `get_do`, `get_fold`, or their mutable variants,\n which handle the borrow-style usage of the value.\n Begins a \"borrow\" of `key`: removes and returns its value, leaving a unique `BorrowMarker` in\n the slot so nothing can add to or read it until `end_borrow` restores the value. Returns the\n value and the marker, which must be passed to `end_borrow`.\n While it is not verified that the same value is restored, the intended usage is guaranteed\n by the borrow-style macros (`get_do`, `get_fold`, and their mutable variants).\n Aborts with `EEntryDoesNotExist` if there is no entry for `key`.\n Aborts with `EEntryTypeMismatch` if the entry exists, but its value is not of type `V`.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [
+        {
+          "name": "K",
+          "constraints": [
+            "Copy",
+            "Drop"
+          ]
+        },
+        {
+          "name": "V",
+          "constraints": [
+            "Drop"
+          ]
+        }
+      ],
+      "parameters": [
+        {
+          "name": "ctx",
+          "type_": {
+            "Reference": [
+              true,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "sui",
+                    "name": "tx_context"
+                  },
+                  "name": "TxContext",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "permit",
+          "type_": {
+            "Datatype": {
+              "module": {
+                "address": "sui",
+                "name": "scratch"
+              },
+              "name": "Permit",
+              "type_arguments": [
+                {
+                  "phantom": true,
+                  "argument": {
+                    "NamedTypeParameter": "K"
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "key",
+          "type_": {
+            "NamedTypeParameter": "K"
+          }
+        }
+      ],
+      "return_": [
+        {
+          "NamedTypeParameter": "V"
+        },
+        {
+          "Datatype": {
+            "module": {
+              "address": "sui",
+              "name": "scratch"
+            },
+            "name": "BorrowMarker",
+            "type_arguments": [
+              {
+                "phantom": true,
+                "argument": {
+                  "NamedTypeParameter": "V"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "end_borrow": {
+      "source_index": 10,
+      "index": 10,
+      "doc": " Not intended for direct usage. Instead, call `get_do`, `get_fold`, or their mutable variants,\n which handle the borrow-style usage of the value.\n Ends a \"borrow\" begun by `begin_borrow`: removes the `BorrowMarker` from `key`'s slot and\n restores `value`.\n While it is not verified that the same value is restored, the intended usage is guaranteed\n by the borrow-style macros (`get_do`, `get_fold`, and their mutable variants).\n Aborts with `EEntryDoesNotExist` if the borrow was already ended.\n Aborts with `EEntryTypeMismatch` if the entry exists, but its value is not a `BorrowMarker<V>`.\n Aborts with `EBorrowMarkerMismatch` unless the slot still holds `marker`.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [
+        {
+          "name": "K",
+          "constraints": [
+            "Copy",
+            "Drop"
+          ]
+        },
+        {
+          "name": "V",
+          "constraints": [
+            "Drop"
+          ]
+        }
+      ],
+      "parameters": [
+        {
+          "name": "ctx",
+          "type_": {
+            "Reference": [
+              true,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "sui",
+                    "name": "tx_context"
+                  },
+                  "name": "TxContext",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "permit",
+          "type_": {
+            "Datatype": {
+              "module": {
+                "address": "sui",
+                "name": "scratch"
+              },
+              "name": "Permit",
+              "type_arguments": [
+                {
+                  "phantom": true,
+                  "argument": {
+                    "NamedTypeParameter": "K"
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "key",
+          "type_": {
+            "NamedTypeParameter": "K"
+          }
+        },
+        {
+          "name": "value",
+          "type_": {
+            "NamedTypeParameter": "V"
+          }
+        },
+        {
+          "name": "marker",
+          "type_": {
+            "Datatype": {
+              "module": {
+                "address": "sui",
+                "name": "scratch"
+              },
+              "name": "BorrowMarker",
+              "type_arguments": [
+                {
+                  "phantom": true,
+                  "argument": {
+                    "NamedTypeParameter": "V"
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "return_": []
+    },
+    "borrow_marker": {
+      "source_index": 27,
+      "index": 11,
+      "doc": " Returns a fresh `BorrowMarker<V>`, unique within the transaction, from a monotonic counter kept\n in its own scratch entry.",
+      "attributes": [],
+      "visibility": "Private",
+      "entry": false,
+      "type_parameters": [
+        {
+          "name": "V",
+          "constraints": [
+            "Drop"
+          ]
+        }
+      ],
+      "parameters": [
+        {
+          "name": "ctx",
+          "type_": {
+            "Reference": [
+              true,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "sui",
+                    "name": "tx_context"
+                  },
+                  "name": "TxContext",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        {
+          "Datatype": {
+            "module": {
+              "address": "sui",
+              "name": "scratch"
+            },
+            "name": "BorrowMarker",
+            "type_arguments": [
+              {
+                "phantom": true,
+                "argument": {
+                  "NamedTypeParameter": "V"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "hash_type_and_key": {
+      "source_index": 28,
+      "index": 12,
+      "doc": " Hashes the type and value of `k` against `DUMMY_ROOT` to produce the address identifying its\n scratch entry.",
+      "attributes": [],
+      "visibility": "Private",
+      "entry": false,
+      "type_parameters": [
+        {
+          "name": "K",
+          "constraints": [
+            "Copy",
+            "Drop"
+          ]
+        }
+      ],
+      "parameters": [
+        {
+          "name": "k",
+          "type_": {
+            "NamedTypeParameter": "K"
+          }
+        }
+      ],
+      "return_": [
+        "address"
+      ]
+    },
+    "add_impl": {
+      "source_index": 29,
+      "index": 13,
+      "doc": " Aborts with `EEntryAlreadyExists` if there is an entry already for `key`, regardless of the\n type of `V`",
+      "attributes": [],
+      "visibility": "Private",
+      "entry": false,
+      "type_parameters": [
+        {
+          "name": "V",
+          "constraints": [
+            "Drop"
+          ]
+        }
+      ],
+      "parameters": [
+        {
+          "name": "key",
+          "type_": "address"
+        },
+        {
+          "name": "value",
+          "type_": {
+            "NamedTypeParameter": "V"
+          }
+        }
+      ],
+      "return_": []
+    },
+    "read_impl": {
+      "source_index": 30,
+      "index": 14,
+      "doc": " Aborts with `EEntryDoesNotExist` if there is no entry for `key`.\n Aborts with `EEntryTypeMismatch` if there is an entry for `key` but it is not of type `V`.",
+      "attributes": [],
+      "visibility": "Private",
+      "entry": false,
+      "type_parameters": [
+        {
+          "name": "V",
+          "constraints": [
+            "Copy",
+            "Drop"
+          ]
+        }
+      ],
+      "parameters": [
+        {
+          "name": "key",
+          "type_": "address"
+        }
+      ],
+      "return_": [
+        {
+          "NamedTypeParameter": "V"
+        }
+      ]
+    },
+    "remove_impl": {
+      "source_index": 31,
+      "index": 15,
+      "doc": " Aborts with `EEntryDoesNotExist` if there is no entry for `key`.\n Aborts with `EEntryTypeMismatch` if there is an entry for `key` but it is not of type `V`.",
+      "attributes": [],
+      "visibility": "Private",
+      "entry": false,
+      "type_parameters": [
+        {
+          "name": "V",
+          "constraints": [
+            "Drop"
+          ]
+        }
+      ],
+      "parameters": [
+        {
+          "name": "key",
+          "type_": "address"
+        }
+      ],
+      "return_": [
+        {
+          "NamedTypeParameter": "V"
+        }
+      ]
+    },
+    "exists_impl": {
+      "source_index": 32,
+      "index": 16,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Private",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "key",
+          "type_": "address"
+        }
+      ],
+      "return_": [
+        "bool"
+      ]
+    },
+    "exists_with_type_impl": {
+      "source_index": 33,
+      "index": 17,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Private",
+      "entry": false,
+      "type_parameters": [
+        {
+          "name": "V",
+          "constraints": [
+            "Drop"
+          ]
+        }
+      ],
+      "parameters": [
+        {
+          "name": "key",
+          "type_": "address"
+        }
+      ],
+      "return_": [
+        "bool"
+      ]
+    },
+    "get_do": {
+      "source_index": 11,
+      "index": 18446744073709551615,
+      "doc": " If an entry exists for `key`, calls `$f` on an immutable reference to its value; otherwise does\n nothing.\n Note that the value is not actually borrowed, but a placeholder is used while value is\n temporarily removed for the duration of the `$f` operation. As such, the function may abort\n if the `$key` is accessed during the `$f` operation.\n Aborts with `EEntryTypeMismatch` if the entry exists, but its value is not of type `$V`.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "macro_": true,
+      "type_parameters": [
+        {
+          "name": "$K",
+          "constraints": [
+            "Copy",
+            "Drop"
+          ]
+        },
+        {
+          "name": "$V",
+          "constraints": [
+            "Drop"
+          ]
+        },
+        {
+          "name": "$R",
+          "constraints": [
+            "Drop"
+          ]
+        }
+      ],
+      "parameters": [
+        {
+          "name": "$ctx",
+          "type_": {
+            "Reference": [
+              true,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "sui",
+                    "name": "tx_context"
+                  },
+                  "name": "TxContext",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "$permit",
+          "type_": {
+            "Datatype": {
+              "module": {
+                "address": "sui",
+                "name": "scratch"
+              },
+              "name": "Permit",
+              "type_arguments": [
+                {
+                  "phantom": true,
+                  "argument": {
+                    "NamedTypeParameter": "$K"
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "$key",
+          "type_": {
+            "NamedTypeParameter": "$K"
+          }
+        },
+        {
+          "name": "$f",
+          "type_": {
+            "fun": [
+              [
+                {
+                  "Reference": [
+                    false,
+                    {
+                      "NamedTypeParameter": "$V"
+                    }
+                  ]
+                }
+              ],
+              {
+                "NamedTypeParameter": "$R"
+              }
+            ]
+          }
+        }
+      ],
+      "return_": []
+    },
+    "get_fold": {
+      "source_index": 13,
+      "index": 18446744073709551615,
+      "doc": " If an entry exists for `key`, applies `$some` to an immutable reference to its value and returns\n the result; otherwise returns `$none`.\n Note that the value is not actually borrowed, but a placeholder is used while value is\n temporarily removed for the duration of the `$some` operation. As such, the function may abort\n if the `$key` is accessed during the `$some` operation.\n Aborts with `EEntryTypeMismatch` if the entry exists, but its value is not of type `$V`.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "macro_": true,
+      "type_parameters": [
+        {
+          "name": "$K",
+          "constraints": [
+            "Copy",
+            "Drop"
+          ]
+        },
+        {
+          "name": "$V",
+          "constraints": [
+            "Drop"
+          ]
+        },
+        {
+          "name": "$R",
+          "constraints": []
+        }
+      ],
+      "parameters": [
+        {
+          "name": "$ctx",
+          "type_": {
+            "Reference": [
+              true,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "sui",
+                    "name": "tx_context"
+                  },
+                  "name": "TxContext",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "$permit",
+          "type_": {
+            "Datatype": {
+              "module": {
+                "address": "sui",
+                "name": "scratch"
+              },
+              "name": "Permit",
+              "type_arguments": [
+                {
+                  "phantom": true,
+                  "argument": {
+                    "NamedTypeParameter": "$K"
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "$key",
+          "type_": {
+            "NamedTypeParameter": "$K"
+          }
+        },
+        {
+          "name": "$none",
+          "type_": {
+            "NamedTypeParameter": "$R"
+          }
+        },
+        {
+          "name": "$some",
+          "type_": {
+            "fun": [
+              [
+                {
+                  "Reference": [
+                    false,
+                    {
+                      "NamedTypeParameter": "$V"
+                    }
+                  ]
+                }
+              ],
+              {
+                "NamedTypeParameter": "$R"
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        {
+          "NamedTypeParameter": "$R"
+        }
+      ]
+    },
+    "get_mut_do": {
+      "source_index": 12,
+      "index": 18446744073709551615,
+      "doc": " If an entry exists for `key`, calls `$f` on a mutable reference to its value; otherwise does\n nothing.\n Note that the value is not actually borrowed, but a placeholder is used while value is\n temporarily removed for the duration of the `$f` operation. As such, the function may abort\n if the `$key` is accessed during the `$f` operation.\n Aborts with `EEntryTypeMismatch` if the entry exists, but its value is not of type `$V`.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "macro_": true,
+      "type_parameters": [
+        {
+          "name": "$K",
+          "constraints": [
+            "Copy",
+            "Drop"
+          ]
+        },
+        {
+          "name": "$V",
+          "constraints": [
+            "Drop"
+          ]
+        },
+        {
+          "name": "$R",
+          "constraints": [
+            "Drop"
+          ]
+        }
+      ],
+      "parameters": [
+        {
+          "name": "$ctx",
+          "type_": {
+            "Reference": [
+              true,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "sui",
+                    "name": "tx_context"
+                  },
+                  "name": "TxContext",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "$permit",
+          "type_": {
+            "Datatype": {
+              "module": {
+                "address": "sui",
+                "name": "scratch"
+              },
+              "name": "Permit",
+              "type_arguments": [
+                {
+                  "phantom": true,
+                  "argument": {
+                    "NamedTypeParameter": "$K"
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "$key",
+          "type_": {
+            "NamedTypeParameter": "$K"
+          }
+        },
+        {
+          "name": "$f",
+          "type_": {
+            "fun": [
+              [
+                {
+                  "Reference": [
+                    true,
+                    {
+                      "NamedTypeParameter": "$V"
+                    }
+                  ]
+                }
+              ],
+              {
+                "NamedTypeParameter": "$R"
+              }
+            ]
+          }
+        }
+      ],
+      "return_": []
+    },
+    "get_mut_fold": {
+      "source_index": 14,
+      "index": 18446744073709551615,
+      "doc": " If an entry exists for `key`, applies `$some` to a mutable reference to its value and returns\n the result; otherwise returns `$none`.\n Note that the value is not actually borrowed, but a placeholder is used while value is\n temporarily removed for the duration of the `$some` operation. As such, the function may abort\n if the `$key` is accessed during the `$some` operation.\n Aborts with `EEntryTypeMismatch` if the entry exists, but its value is not of type `$V`.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "macro_": true,
+      "type_parameters": [
+        {
+          "name": "$K",
+          "constraints": [
+            "Copy",
+            "Drop"
+          ]
+        },
+        {
+          "name": "$V",
+          "constraints": [
+            "Drop"
+          ]
+        },
+        {
+          "name": "$R",
+          "constraints": []
+        }
+      ],
+      "parameters": [
+        {
+          "name": "$ctx",
+          "type_": {
+            "Reference": [
+              true,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "sui",
+                    "name": "tx_context"
+                  },
+                  "name": "TxContext",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "$permit",
+          "type_": {
+            "Datatype": {
+              "module": {
+                "address": "sui",
+                "name": "scratch"
+              },
+              "name": "Permit",
+              "type_arguments": [
+                {
+                  "phantom": true,
+                  "argument": {
+                    "NamedTypeParameter": "$K"
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "$key",
+          "type_": {
+            "NamedTypeParameter": "$K"
+          }
+        },
+        {
+          "name": "$none",
+          "type_": {
+            "NamedTypeParameter": "$R"
+          }
+        },
+        {
+          "name": "$some",
+          "type_": {
+            "fun": [
+              [
+                {
+                  "Reference": [
+                    true,
+                    {
+                      "NamedTypeParameter": "$V"
+                    }
+                  ]
+                }
+              ],
+              {
+                "NamedTypeParameter": "$R"
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        {
+          "NamedTypeParameter": "$R"
+        }
+      ]
+    },
+    "internal_add": {
+      "source_index": 15,
+      "index": 18446744073709551615,
+      "doc": " A wrapper for `add` that constructs the `Permit<$K>` directly.\n Aborts with `EEntryAlreadyExists` if there is already an entry for `$key`, regardless of its\n value type.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "macro_": true,
+      "type_parameters": [
+        {
+          "name": "$K",
+          "constraints": [
+            "Copy",
+            "Drop"
+          ]
+        },
+        {
+          "name": "$V",
+          "constraints": [
+            "Drop"
+          ]
+        }
+      ],
+      "parameters": [
+        {
+          "name": "$ctx",
+          "type_": {
+            "Reference": [
+              true,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "sui",
+                    "name": "tx_context"
+                  },
+                  "name": "TxContext",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "$key",
+          "type_": {
+            "NamedTypeParameter": "$K"
+          }
+        },
+        {
+          "name": "$value",
+          "type_": {
+            "NamedTypeParameter": "$V"
+          }
+        }
+      ],
+      "return_": []
+    },
+    "internal_exists": {
+      "source_index": 18,
+      "index": 18446744073709551615,
+      "doc": " A wrapper for `exists` that constructs the `Permit<$K>` directly.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "macro_": true,
+      "type_parameters": [
+        {
+          "name": "$K",
+          "constraints": [
+            "Copy",
+            "Drop"
+          ]
+        }
+      ],
+      "parameters": [
+        {
+          "name": "$ctx",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "sui",
+                    "name": "tx_context"
+                  },
+                  "name": "TxContext",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "$key",
+          "type_": {
+            "NamedTypeParameter": "$K"
+          }
+        }
+      ],
+      "return_": [
+        "bool"
+      ]
+    },
+    "internal_exists_with_type": {
+      "source_index": 19,
+      "index": 18446744073709551615,
+      "doc": " A wrapper for `exists_with_type` that constructs the `Permit<$K>` directly.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "macro_": true,
+      "type_parameters": [
+        {
+          "name": "$K",
+          "constraints": [
+            "Copy",
+            "Drop"
+          ]
+        },
+        {
+          "name": "$V",
+          "constraints": [
+            "Drop"
+          ]
+        }
+      ],
+      "parameters": [
+        {
+          "name": "$ctx",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "sui",
+                    "name": "tx_context"
+                  },
+                  "name": "TxContext",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "$key",
+          "type_": {
+            "NamedTypeParameter": "$K"
+          }
+        }
+      ],
+      "return_": [
+        "bool"
+      ]
+    },
+    "internal_get_do": {
+      "source_index": 23,
+      "index": 18446744073709551615,
+      "doc": " A wrapper for `get_do` that constructs the `Permit<$K>` directly.\n Aborts with `EEntryTypeMismatch` if the entry exists, but its value is not of type `$V`.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "macro_": true,
+      "type_parameters": [
+        {
+          "name": "$K",
+          "constraints": [
+            "Copy",
+            "Drop"
+          ]
+        },
+        {
+          "name": "$V",
+          "constraints": [
+            "Drop"
+          ]
+        },
+        {
+          "name": "$R",
+          "constraints": [
+            "Drop"
+          ]
+        }
+      ],
+      "parameters": [
+        {
+          "name": "$ctx",
+          "type_": {
+            "Reference": [
+              true,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "sui",
+                    "name": "tx_context"
+                  },
+                  "name": "TxContext",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "$key",
+          "type_": {
+            "NamedTypeParameter": "$K"
+          }
+        },
+        {
+          "name": "$f",
+          "type_": {
+            "fun": [
+              [
+                {
+                  "Reference": [
+                    false,
+                    {
+                      "NamedTypeParameter": "$V"
+                    }
+                  ]
+                }
+              ],
+              {
+                "NamedTypeParameter": "$R"
+              }
+            ]
+          }
+        }
+      ],
+      "return_": []
+    },
+    "internal_get_fold": {
+      "source_index": 25,
+      "index": 18446744073709551615,
+      "doc": " A wrapper for `get_fold` that constructs the `Permit<$K>` directly.\n Aborts with `EEntryTypeMismatch` if the entry exists, but its value is not of type `$V`.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "macro_": true,
+      "type_parameters": [
+        {
+          "name": "$K",
+          "constraints": [
+            "Copy",
+            "Drop"
+          ]
+        },
+        {
+          "name": "$V",
+          "constraints": [
+            "Drop"
+          ]
+        },
+        {
+          "name": "$R",
+          "constraints": []
+        }
+      ],
+      "parameters": [
+        {
+          "name": "$ctx",
+          "type_": {
+            "Reference": [
+              true,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "sui",
+                    "name": "tx_context"
+                  },
+                  "name": "TxContext",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "$key",
+          "type_": {
+            "NamedTypeParameter": "$K"
+          }
+        },
+        {
+          "name": "$none",
+          "type_": {
+            "NamedTypeParameter": "$R"
+          }
+        },
+        {
+          "name": "$some",
+          "type_": {
+            "fun": [
+              [
+                {
+                  "Reference": [
+                    false,
+                    {
+                      "NamedTypeParameter": "$V"
+                    }
+                  ]
+                }
+              ],
+              {
+                "NamedTypeParameter": "$R"
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        {
+          "NamedTypeParameter": "$R"
+        }
+      ]
+    },
+    "internal_get_mut_do": {
+      "source_index": 24,
+      "index": 18446744073709551615,
+      "doc": " A wrapper for `get_mut_do` that constructs the `Permit<$K>` directly.\n Aborts with `EEntryTypeMismatch` if the entry exists, but its value is not of type `$V`.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "macro_": true,
+      "type_parameters": [
+        {
+          "name": "$K",
+          "constraints": [
+            "Copy",
+            "Drop"
+          ]
+        },
+        {
+          "name": "$V",
+          "constraints": [
+            "Drop"
+          ]
+        },
+        {
+          "name": "$R",
+          "constraints": [
+            "Drop"
+          ]
+        }
+      ],
+      "parameters": [
+        {
+          "name": "$ctx",
+          "type_": {
+            "Reference": [
+              true,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "sui",
+                    "name": "tx_context"
+                  },
+                  "name": "TxContext",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "$key",
+          "type_": {
+            "NamedTypeParameter": "$K"
+          }
+        },
+        {
+          "name": "$f",
+          "type_": {
+            "fun": [
+              [
+                {
+                  "Reference": [
+                    true,
+                    {
+                      "NamedTypeParameter": "$V"
+                    }
+                  ]
+                }
+              ],
+              {
+                "NamedTypeParameter": "$R"
+              }
+            ]
+          }
+        }
+      ],
+      "return_": []
+    },
+    "internal_get_mut_fold": {
+      "source_index": 26,
+      "index": 18446744073709551615,
+      "doc": " A wrapper for `get_mut_fold` that constructs the `Permit<$K>` directly.\n Aborts with `EEntryTypeMismatch` if the entry exists, but its value is not of type `$V`.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "macro_": true,
+      "type_parameters": [
+        {
+          "name": "$K",
+          "constraints": [
+            "Copy",
+            "Drop"
+          ]
+        },
+        {
+          "name": "$V",
+          "constraints": [
+            "Drop"
+          ]
+        },
+        {
+          "name": "$R",
+          "constraints": []
+        }
+      ],
+      "parameters": [
+        {
+          "name": "$ctx",
+          "type_": {
+            "Reference": [
+              true,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "sui",
+                    "name": "tx_context"
+                  },
+                  "name": "TxContext",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "$key",
+          "type_": {
+            "NamedTypeParameter": "$K"
+          }
+        },
+        {
+          "name": "$none",
+          "type_": {
+            "NamedTypeParameter": "$R"
+          }
+        },
+        {
+          "name": "$some",
+          "type_": {
+            "fun": [
+              [
+                {
+                  "Reference": [
+                    true,
+                    {
+                      "NamedTypeParameter": "$V"
+                    }
+                  ]
+                }
+              ],
+              {
+                "NamedTypeParameter": "$R"
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        {
+          "NamedTypeParameter": "$R"
+        }
+      ]
+    },
+    "internal_read": {
+      "source_index": 16,
+      "index": 18446744073709551615,
+      "doc": " A wrapper for `read` that constructs the `Permit<$K>` directly.\n Aborts with `EEntryDoesNotExist` if there is no entry for `$key`.\n Aborts with `EEntryTypeMismatch` if the entry exists, but its value is not of type `$V`.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "macro_": true,
+      "type_parameters": [
+        {
+          "name": "$K",
+          "constraints": [
+            "Copy",
+            "Drop"
+          ]
+        },
+        {
+          "name": "$V",
+          "constraints": [
+            "Copy",
+            "Drop"
+          ]
+        }
+      ],
+      "parameters": [
+        {
+          "name": "$ctx",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "sui",
+                    "name": "tx_context"
+                  },
+                  "name": "TxContext",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "$key",
+          "type_": {
+            "NamedTypeParameter": "$K"
+          }
+        }
+      ],
+      "return_": [
+        {
+          "NamedTypeParameter": "$V"
+        }
+      ]
+    },
+    "internal_read_opt": {
+      "source_index": 20,
+      "index": 18446744073709551615,
+      "doc": " A wrapper for `read_opt` that constructs the `Permit<$K>` directly.\n Aborts with `EEntryTypeMismatch` if the entry exists, but its value is not of type `$V`.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "macro_": true,
+      "type_parameters": [
+        {
+          "name": "$K",
+          "constraints": [
+            "Copy",
+            "Drop"
+          ]
+        },
+        {
+          "name": "$V",
+          "constraints": [
+            "Copy",
+            "Drop"
+          ]
+        }
+      ],
+      "parameters": [
+        {
+          "name": "$ctx",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "sui",
+                    "name": "tx_context"
+                  },
+                  "name": "TxContext",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "$key",
+          "type_": {
+            "NamedTypeParameter": "$K"
+          }
+        }
+      ],
+      "return_": [
+        {
+          "Datatype": {
+            "module": {
+              "address": "std",
+              "name": "option"
+            },
+            "name": "Option",
+            "type_arguments": [
+              {
+                "phantom": false,
+                "argument": {
+                  "NamedTypeParameter": "$V"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "internal_remove": {
+      "source_index": 17,
+      "index": 18446744073709551615,
+      "doc": " A wrapper for `remove` that constructs the `Permit<$K>` directly.\n Aborts with `EEntryDoesNotExist` if there is no entry for `$key`.\n Aborts with `EEntryTypeMismatch` if the entry exists, but its value is not of type `$V`.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "macro_": true,
+      "type_parameters": [
+        {
+          "name": "$K",
+          "constraints": [
+            "Copy",
+            "Drop"
+          ]
+        },
+        {
+          "name": "$V",
+          "constraints": [
+            "Drop"
+          ]
+        }
+      ],
+      "parameters": [
+        {
+          "name": "$ctx",
+          "type_": {
+            "Reference": [
+              true,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "sui",
+                    "name": "tx_context"
+                  },
+                  "name": "TxContext",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "$key",
+          "type_": {
+            "NamedTypeParameter": "$K"
+          }
+        }
+      ],
+      "return_": [
+        {
+          "NamedTypeParameter": "$V"
+        }
+      ]
+    },
+    "internal_remove_opt": {
+      "source_index": 21,
+      "index": 18446744073709551615,
+      "doc": " A wrapper for `remove_opt` that constructs the `Permit<$K>` directly.\n Aborts with `EEntryTypeMismatch` if the entry exists, but its value is not of type `$V`.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "macro_": true,
+      "type_parameters": [
+        {
+          "name": "$K",
+          "constraints": [
+            "Copy",
+            "Drop"
+          ]
+        },
+        {
+          "name": "$V",
+          "constraints": [
+            "Drop"
+          ]
+        }
+      ],
+      "parameters": [
+        {
+          "name": "$ctx",
+          "type_": {
+            "Reference": [
+              true,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "sui",
+                    "name": "tx_context"
+                  },
+                  "name": "TxContext",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "$key",
+          "type_": {
+            "NamedTypeParameter": "$K"
+          }
+        }
+      ],
+      "return_": [
+        {
+          "Datatype": {
+            "module": {
+              "address": "std",
+              "name": "option"
+            },
+            "name": "Option",
+            "type_arguments": [
+              {
+                "phantom": false,
+                "argument": {
+                  "NamedTypeParameter": "$V"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "internal_replace": {
+      "source_index": 22,
+      "index": 18446744073709551615,
+      "doc": " A wrapper for `replace` that constructs the `Permit<$K>` directly.\n Aborts with `EEntryTypeMismatch` if the entry exists, but its value is not of type `$VOld`.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "macro_": true,
+      "type_parameters": [
+        {
+          "name": "$K",
+          "constraints": [
+            "Copy",
+            "Drop"
+          ]
+        },
+        {
+          "name": "$VNew",
+          "constraints": [
+            "Drop"
+          ]
+        },
+        {
+          "name": "$VOld",
+          "constraints": [
+            "Drop"
+          ]
+        }
+      ],
+      "parameters": [
+        {
+          "name": "$ctx",
+          "type_": {
+            "Reference": [
+              true,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "sui",
+                    "name": "tx_context"
+                  },
+                  "name": "TxContext",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "$key",
+          "type_": {
+            "NamedTypeParameter": "$K"
+          }
+        },
+        {
+          "name": "$value",
+          "type_": {
+            "NamedTypeParameter": "$VNew"
+          }
+        }
+      ],
+      "return_": [
+        {
+          "Datatype": {
+            "module": {
+              "address": "std",
+              "name": "option"
+            },
+            "name": "Option",
+            "type_arguments": [
+              {
+                "phantom": false,
+                "argument": {
+                  "NamedTypeParameter": "$VOld"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "structs": {
+    "Permit": {
+      "index": 0,
+      "doc": " A `Permit<K>` gates access to all entries keyed by values of type `K`.\n It is issued from an `internal::Permit<K>`, allowing the module that defines `K` to control\n all access to scratch entries.",
+      "attributes": [],
+      "abilities": [
+        "Copy",
+        "Drop"
+      ],
+      "type_parameters": [
+        {
+          "phantom": true,
+          "name": "K",
+          "constraints": [
+            "Copy",
+            "Drop"
+          ]
+        }
+      ],
+      "fields": {
+        "positional_fields": true,
+        "fields": {
+          "dummy_field": {
+            "index": 0,
+            "type_": "bool"
+          }
+        }
+      }
+    },
+    "BorrowMarker": {
+      "index": 1,
+      "doc": " Occupies a key's slot while `get_do`, `get_fold`, or their mutable variants have the value of\n type `V` removed, so nothing can add to or read the slot while the value is being \"borrowed\".\n Each one carries a transaction-unique id, so a marker cannot be forged to match one in use.",
+      "attributes": [],
+      "abilities": [
+        "Drop"
+      ],
+      "type_parameters": [
+        {
+          "phantom": true,
+          "name": "V",
+          "constraints": [
+            "Drop"
+          ]
+        }
+      ],
+      "fields": {
+        "positional_fields": true,
+        "fields": {
+          "pos0": {
+            "index": 0,
+            "doc": null,
+            "type_": "u64"
+          }
+        }
+      }
+    },
+    "BorrowMarkerKey": {
+      "index": 2,
+      "doc": " Key for the scratch entry that holds the monotonic counter backing `borrow_marker`.",
+      "attributes": [],
+      "abilities": [
+        "Copy",
+        "Drop"
+      ],
+      "type_parameters": [],
+      "fields": {
+        "positional_fields": true,
+        "fields": {
+          "dummy_field": {
+            "index": 0,
+            "type_": "bool"
+          }
+        }
+      }
+    }
+  },
+  "enums": {}
+}

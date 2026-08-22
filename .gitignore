@@ -1,5 +1,7 @@
 # Move
 move/build/
+move/.coverage_map.mvcov
+move/traces/
 
 # OS
 .DS_Store
