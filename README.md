@@ -176,11 +176,11 @@ move/
 
 Depends on [`miso-record`](https://github.com/misonetwork/miso-record) (the generic
 `Record<Certificate>`) and the miso-protocol (`Release` / `ReleaseAdminCap`), as
-sibling checkouts under `misonetwork/`:
+local checkouts at the paths used by `move/Move.toml`:
 
 ```toml
-miso = { local = "../../miso-protocol" }
-miso_record = { local = "../../miso-record/move" }
+miso = { local = "../../../misonetwork/protocol" }
+miso_record = { local = "../../record/move" }
 ```
 
 ## Build
