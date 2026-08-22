@@ -158,15 +158,17 @@ public struct PressingStateChangedEvent has copy, drop {
 //=== Errors ===
 
 // Authorization errors
-#[error]
-const EUnauthorized: vector<u8> = b"This admin cap does not control this pressing";
+
+/// This admin cap does not control this pressing
+const EUnauthorized: u64 = 0;
 
 // State errors
-#[error]
-const ENotStarted: vector<u8> = b"The pressing is scheduled and has not opened yet";
 
-#[error]
-const EPressingPaused: vector<u8> = b"The pressing is paused and sells in no currency";
+/// The pressing is scheduled and has not opened yet
+const ENotStarted: u64 = 1;
+
+/// The pressing is paused and sells in no currency
+const EPressingPaused: u64 = 2;
 
 //=== State Constructors ===
 

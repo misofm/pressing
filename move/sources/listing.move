@@ -148,19 +148,22 @@ public struct ListingPriceChangedEvent<phantom Currency> has copy, drop {
 //=== Errors ===
 
 // Authorization errors
-#[error]
-const EUnauthorized: vector<u8> = b"This admin cap does not control this listing's pressing";
 
-#[error]
-const EWrongPressing: vector<u8> = b"That is not the pressing this listing sells from";
+/// This admin cap does not control this listing's pressing
+const EUnauthorized: u64 = 0;
+
+/// That is not the pressing this listing sells from
+const EWrongPressing: u64 = 1;
 
 // State errors
-#[error]
-const EListingDisabled: vector<u8> = b"This listing does not accept payment in this currency";
+
+/// This listing does not accept payment in this currency
+const EListingDisabled: u64 = 2;
 
 // Validation errors
-#[error]
-const EInsufficientPayment: vector<u8> = b"Payment does not satisfy the listing's price";
+
+/// Payment does not satisfy the listing's price
+const EInsufficientPayment: u64 = 3;
 
 //=== Term Constructors ===
 
