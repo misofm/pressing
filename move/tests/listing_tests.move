@@ -34,7 +34,7 @@ fun a_listing_for<Currency>(
     ctx: &mut TxContext,
 ): (Pressing, PressingAdminCap, Listing<Currency>) {
     let (p, admin) = pressing::new_for_testing(release_id, ctx);
-    let l = listing::new_for_testing<Currency>(release_id, p.id(), price, state, ctx);
+    let l = listing::new_for_testing<Currency>(release_id, object::id(&p), price, state, ctx);
     (p, admin, l)
 }
 
@@ -52,7 +52,7 @@ fun buy_presses_the_record_and_certifies_what_was_paid() {
         listing::new_enabled_state(),
         &mut ctx,
     );
-    let pressing_id = p.id();
+    let pressing_id = object::id(&p);
 
     let r = l.buy(&mut p, balance::create_for_testing<SUI>(8), &cfg, &clk, &ctx);
 
@@ -61,7 +61,7 @@ fun buy_presses_the_record_and_certifies_what_was_paid() {
     assert_eq!(c.number(), 1);
     assert_eq!(c.purchase_price(), 8); // the full 8, tip included
     assert_eq!(c.purchase_currency(), std::type_name::with_defining_ids<SUI>());
-    assert_eq!(record::derive_id(pressing_id, 1), r.id());
+    assert_eq!(record::derive_id(pressing_id, 1), object::id(&r));
     assert_eq!(p.supply(), 1);
 
     destroy(r);
@@ -83,8 +83,8 @@ fun sale_event_captures_the_accepted_offer_and_result() {
         listing::new_enabled_state(),
         &mut ctx,
     );
-    let pressing_id = p.id();
-    let listing_id = l.id();
+    let pressing_id = object::id(&p);
+    let listing_id = object::id(&l);
 
     let record = l.buy(&mut p, balance::create_for_testing<SUI>(8), &cfg, &clk, &ctx);
 
@@ -103,7 +103,7 @@ fun sale_event_captures_the_accepted_offer_and_result() {
     assert_eq!(sold_listing_id, listing_id);
     assert_eq!(sold_pressing_id, pressing_id);
     assert_eq!(sold_release_id, release_id);
-    assert_eq!(sold_record_id, record.id());
+    assert_eq!(sold_record_id, object::id(&record));
     assert_eq!(number, 1);
     assert_eq!(price, listing::new_floor_price(5));
     assert_eq!(paid, 8);
@@ -258,14 +258,14 @@ fun the_drop_moment_opens_every_currency_at_once() {
     let (mut p, admin) = pressing::new_for_testing(id(@0xBEEF), &mut ctx);
     let mut sui_l = listing::new_for_testing<SUI>(
         id(@0xBEEF),
-        p.id(),
+        object::id(&p),
         listing::new_fixed_price(0),
         listing::new_enabled_state(),
         &mut ctx,
     );
     let usdx_l = listing::new_for_testing<USDX>(
         id(@0xBEEF),
-        p.id(),
+        object::id(&p),
         listing::new_fixed_price(0),
         listing::new_enabled_state(),
         &mut ctx,
@@ -353,7 +353,7 @@ fun set_price_reprices_the_standing_listing() {
         listing::new_enabled_state(),
         &mut ctx,
     );
-    let listing_id = l.id();
+    let listing_id = object::id(&l);
 
     let r1 = l.buy(&mut p, balance::create_for_testing<SUI>(10), &cfg, &clk, &ctx);
 
@@ -362,7 +362,7 @@ fun set_price_reprices_the_standing_listing() {
     let r2 = l.buy(&mut p, balance::create_for_testing<SUI>(20), &cfg, &clk, &ctx);
 
     // Same listing through the change; each record certifies what IT paid.
-    assert_eq!(l.id(), listing_id);
+    assert_eq!(object::id(&l), listing_id);
     assert_eq!(certificate::of(&r1).destroy_some().purchase_price(), 10);
     assert_eq!(certificate::of(&r2).destroy_some().purchase_price(), 20);
     assert_eq!(p.supply(), 2);
@@ -422,7 +422,7 @@ fun listing_events_capture_the_initial_offer_and_each_edit() {
     let mut ctx = tx_context::new_from_hint(@0xA, 0, 0, 0, 0);
     let release_id = id(@0xBEEF);
     let (mut p, admin) = pressing::new_for_testing(release_id, &mut ctx);
-    let pressing_id = p.id();
+    let pressing_id = object::id(&p);
     let initial_price = listing::new_fixed_price(10);
     let initial_state = listing::new_enabled_state();
 
@@ -445,7 +445,7 @@ fun listing_events_capture_the_initial_offer_and_each_edit() {
         initial_state,
         &mut ctx,
     );
-    let editable_listing_id = listing.id();
+    let editable_listing_id = object::id(&listing);
     let disabled = listing::new_disabled_state();
     let new_price = listing::new_floor_price(7);
     listing.set_state(&admin, disabled);
@@ -520,13 +520,13 @@ fun one_pressing_sells_in_two_currencies_off_one_number_sequence() {
     let (cfg, settings_admin) = authorized_settings(sc.ctx());
     let clk = clock::create_for_testing(sc.ctx());
     let (mut rel, cap) = a_release(sc.ctx());
-    let release_id = rel.id();
+    let release_id = object::id(&rel);
 
     // Open the pressing and list it in two currencies — all in one transaction,
     // because `new` hands the pressing back unshared. The release cap is used once,
     // here, and never again; the pressing cap governs everything after.
     let (mut p, admin) = pressing::new(&mut rel, &cap, pressing::new_active_state());
-    let pressing_id = p.id();
+    let pressing_id = object::id(&p);
     listing::new<SUI>(&mut p, &admin, listing::new_fixed_price(10), listing::new_enabled_state());
     listing::new<USDX>(&mut p, &admin, listing::new_fixed_price(25), listing::new_enabled_state());
     assert!(listing::has_listing<SUI>(&p) && listing::has_listing<USDX>(&p));
@@ -539,8 +539,8 @@ fun one_pressing_sells_in_two_currencies_off_one_number_sequence() {
 
     // Both listings sit exactly where the currency type says they should — every
     // address in the tree is pure math off the release id.
-    assert_eq!(sui_listing.id(), listing::derive_id<SUI>(pressing_id));
-    assert_eq!(usdx_listing.id(), listing::derive_id<USDX>(pressing_id));
+    assert_eq!(object::id(&sui_listing), listing::derive_id<SUI>(pressing_id));
+    assert_eq!(object::id(&usdx_listing), listing::derive_id<USDX>(pressing_id));
     assert!(listing::derive_id<SUI>(pressing_id) != listing::derive_id<USDX>(pressing_id));
     assert_eq!(sui_listing.price().amount(), 10);
     assert_eq!(usdx_listing.price().amount(), 25);
@@ -553,7 +553,7 @@ fun one_pressing_sells_in_two_currencies_off_one_number_sequence() {
     assert_eq!(certificate::of(&r1).destroy_some().number(), 1);
     assert_eq!(certificate::of(&r2).destroy_some().number(), 2);
     assert_eq!(certificate::of(&r3).destroy_some().number(), 3);
-    assert_eq!(record::derive_id(pressing_id, 2), r2.id());
+    assert_eq!(record::derive_id(pressing_id, 2), object::id(&r2));
     assert_eq!(r1.release_id(), release_id);
 
     // Each record's certificate names the rail it actually came through.
@@ -578,7 +578,7 @@ fun one_pressing_sells_in_two_currencies_off_one_number_sequence() {
     assert!(!sui_listing.is_live(&p, &clk));
     assert!(!usdx_listing.is_live(&p, &clk));
     assert!(listing::has_listing<SUI>(&p) && listing::has_listing<USDX>(&p));
-    assert_eq!(record::derive_id(pressing_id, 1), r1.id()); // sold records stay verifiable forever
+    assert_eq!(record::derive_id(pressing_id, 1), object::id(&r1)); // sold records stay verifiable forever
 
     destroy(r1);
     destroy(r2);

@@ -206,7 +206,7 @@ public fun new<Currency>(
     pressing.authorize(cap);
 
     let release_id = pressing.release_id();
-    let pressing_id = pressing.id();
+    let pressing_id = object::id(pressing);
     let id = derived_object::claim(pressing.uid_mut(), ListingKey<Currency>());
 
     emit(ListingOpenedEvent<Currency> {
@@ -241,7 +241,7 @@ public fun buy<Currency>(
     clock: &Clock,
     ctx: &TxContext,
 ): Record {
-    assert!(self.pressing_id == pressing.id(), EWrongPressing);
+    assert!(self.pressing_id == object::id(pressing), EWrongPressing);
     assert!(self.is_enabled(), EListingDisabled);
 
     let paid = payment.value();
@@ -267,7 +267,7 @@ public fun buy<Currency>(
         listing_id: self.id.to_inner(),
         pressing_id: self.pressing_id,
         release_id: self.release_id,
-        record_id: record.id(),
+        record_id: object::id(&record),
         // mint_next just advanced the counter to this record's number.
         number: pressing.supply(),
         price: self.price,
@@ -333,10 +333,6 @@ public fun has_listing<Currency>(pressing: &Pressing): bool {
     derived_object::exists(pressing.uid(), ListingKey<Currency>())
 }
 
-public fun id<Currency>(self: &Listing<Currency>): ID {
-    self.id.to_inner()
-}
-
 public fun release_id<Currency>(self: &Listing<Currency>): ID {
     self.release_id
 }
@@ -361,7 +357,7 @@ public fun is_live<Currency>(
     pressing: &Pressing,
     clock: &Clock,
 ): bool {
-    self.pressing_id == pressing.id() && self.is_enabled() && pressing.is_selling(clock)
+    self.pressing_id == object::id(pressing) && self.is_enabled() && pressing.is_selling(clock)
 }
 
 /// The price amount (the fixed price, or the floor).

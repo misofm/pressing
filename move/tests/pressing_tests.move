@@ -20,15 +20,15 @@ use sui::test_scenario as ts;
 fun new_derives_the_pressing_and_its_cap_off_the_release() {
     let mut sc = ts::begin(@0xA);
     let (mut rel, cap) = a_release(sc.ctx());
-    let release_id = rel.id();
+    let release_id = object::id(&rel);
 
     let (p, admin) = pressing::new(&mut rel, &cap, pressing::new_active_state());
 
     // Every address in the tree is pure math — the pressing off the release, the cap
     // off the pressing. No lookup, no registry.
-    assert_eq!(p.id(), pressing::derive_id(release_id));
-    assert_eq!(object::id(&admin), pressing::derive_admin_cap_id(p.id()));
-    assert_eq!(admin.pressing_id(), p.id());
+    assert_eq!(object::id(&p), pressing::derive_id(release_id));
+    assert_eq!(object::id(&admin), pressing::derive_admin_cap_id(object::id(&p)));
+    assert_eq!(admin.pressing_id(), object::id(&p));
     assert_eq!(p.release_id(), release_id);
     assert_eq!(p.supply(), 0);
     assert!(p.is_active());
@@ -36,7 +36,7 @@ fun new_derives_the_pressing_and_its_cap_off_the_release() {
 
     sc.next_tx(@0xA);
     let p = sc.take_shared<Pressing>();
-    assert_eq!(p.id(), pressing::derive_id(release_id));
+    assert_eq!(object::id(&p), pressing::derive_id(release_id));
     ts::return_shared(p);
 
     destroy(rel);
@@ -51,11 +51,11 @@ fun events_capture_opening_and_every_state_transition() {
     let (cfg, settings_admin) = authorized_settings(&mut ctx);
     let clk = clock_at(100, &mut ctx);
     let (mut rel, cap) = a_release(&mut ctx);
-    let release_id = rel.id();
+    let release_id = object::id(&rel);
     let scheduled = pressing::new_scheduled_state(100);
 
     let (mut p, admin) = pressing::new(&mut rel, &cap, scheduled);
-    let pressing_id = p.id();
+    let pressing_id = object::id(&p);
 
     let opened = event::events_by_type<pressing::PressingOpenedEvent>();
     assert_eq!(opened.length(), 1);
@@ -95,7 +95,7 @@ fun numbers_advance_gap_free_and_records_are_addressable() {
     let (cfg, settings_admin) = authorized_settings(&mut ctx);
     let clk = clock_at(1_000, &mut ctx);
     let (mut p, admin) = pressing::new_for_testing(id(@0xBEEF), &mut ctx);
-    let pressing_id = p.id();
+    let pressing_id = object::id(&p);
 
     // Nothing pressed yet — number 0 does not exist, and neither does 1.
     assert!(p.record_id(0).is_none());
@@ -117,11 +117,11 @@ fun numbers_advance_gap_free_and_records_are_addressable() {
 
     // Each sits at exactly the address its number derives to — the certificate is the
     // readable form of what the address already proves.
-    assert_eq!(*p.record_id(1).borrow(), r1.id());
-    assert_eq!(*p.record_id(3).borrow(), r3.id());
+    assert_eq!(*p.record_id(1).borrow(), object::id(&r1));
+    assert_eq!(*p.record_id(3).borrow(), object::id(&r3));
     assert!(p.record_id(4).is_none());
-    assert_eq!(record::derive_id(pressing_id, c1.number()), r1.id());
-    assert!(record::derive_id(id(@0xD0), c1.number()) != r1.id());
+    assert_eq!(record::derive_id(pressing_id, c1.number()), object::id(&r1));
+    assert!(record::derive_id(id(@0xD0), c1.number()) != object::id(&r1));
 
     destroy(r1);
     destroy(r2);
@@ -168,7 +168,7 @@ fun verify_record_checks_the_certificate_against_the_address_math() {
 
     // A record from a pressing that is not its release's does not — the address math
     // catches it even though the record has a genuine certificate.
-    let (mut rogue, rogue_admin) = pressing::new_for_testing(rel.id(), &mut ctx);
+    let (mut rogue, rogue_admin) = pressing::new_for_testing(object::id(&rel), &mut ctx);
     let fake = rogue.mint_next<SUI>(&cfg, 10, &clk, &ctx);
     assert!(certificate::of(&fake).is_some());
     assert!(!pressing::verify_record(&fake));

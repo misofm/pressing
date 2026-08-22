@@ -202,7 +202,7 @@ public fun new(
     cap: &ReleaseAdminCap,
     state: PressingState,
 ): (Pressing, PressingAdminCap) {
-    let release_id = release.id();
+    let release_id = object::id(release);
     let mut id = derived_object::claim(release.uid_mut(cap), PressingKey());
     let pressing_id = id.to_inner();
 
@@ -297,10 +297,6 @@ public fun derive_id(release_id: ID): ID {
     derived_object::derive_address(release_id, PressingKey()).to_id()
 }
 
-public fun id(self: &Pressing): ID {
-    self.id.to_inner()
-}
-
 public fun release_id(self: &Pressing): ID {
     self.release_id
 }
@@ -342,7 +338,7 @@ public fun pressing_admin_cap_pressing_id(cap: &PressingAdminCap): ID {
 /// already proves.
 public fun verify_record(record: &Record): bool {
     certificate::of(record).is_some_and!(|cert| {
-        record::derive_id(derive_id(record.release_id()), cert.number()) == record.id()
+        record::derive_id(derive_id(record.release_id()), cert.number()) == object::id(record)
     })
 }
 
