@@ -228,7 +228,7 @@
     "buy": {
       "source_index": 5,
       "index": 5,
-      "doc": " Buy one record: pay this listing's price, take the next number out of the pressing.\n\n `payment` is a bare `Balance<Currency>` and must satisfy the price (exactly, for\n `Fixed`; at least, for `Floor`). The ENTIRE payment forwards to the release's\n address — under `Floor`, anything above the floor is kept as a tip, not refunded.\n The record's number is the pressing's next 1-based value, shared with every other\n currency selling the same run, and its UID is derived off the pressing. The sale's\n terms are embedded in the record's `Certificate`.\n\n Both switches must be open: this listing `Enabled`, checked here, and the run\n selling at this moment, checked in `pressing::mint_next`.",
+      "doc": " Buy one record: pay this listing's price, take the next number out of the pressing.\n\n `payment` is a bare `Balance<Currency>` and must satisfy the price (exactly, for\n `Fixed`; at least, for `Floor`). The ENTIRE payment forwards to the release's\n address — under `Floor`, anything above the floor is kept as a tip, not refunded.\n The record's number is the pressing's next 1-based value, shared with every other\n currency selling the same run, and its UID is derived off the pressing. The sale's\n transaction sender and terms are embedded in the record's `Certificate`.\n\n Both switches must be open: this listing `Enabled`, checked here, and the run\n selling at this moment, checked in `pressing::mint_next`.",
       "attributes": [
         {
           "Parameterized": [

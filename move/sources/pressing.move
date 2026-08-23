@@ -57,9 +57,9 @@
 /// yields `release::uid_mut`, and `balance::withdraw_funds_from_object` is gated on
 /// `&mut UID` alone — so the release cap can withdraw the sales revenue that `buy`
 /// forwards to the release's address. Under one cap, "may reprice a listing" and
-/// "may take the money" would be the same grant. The pressing cap is the routine
-/// one, safe to delegate to whoever runs the shop; the release cap stays with the
-/// rightsholder.
+/// "may take the money" would be the same grant. The caps may be held together. If
+/// separated, the pressing cap remains issuance authority: it controls listing creation,
+/// price, and availability, but cannot withdraw revenue.
 module miso_pressing::pressing;
 
 use miso::release::{Release, ReleaseAdminCap};
@@ -236,12 +236,13 @@ public(package) fun uid(self: &Pressing): &UID {
 }
 
 /// Press the next record in the run: advance the counter, derive the record's UID off
-/// this pressing at the new number, and embed its certificate in the same transaction.
-/// The 1-based number is unique across every currency the pressing sells in. Aborts
-/// if the run is paused or has not opened yet — the run-wide switch is checked here,
-/// so no sale path can miss it.
+/// this pressing at the new number, and embed its purchaser and sale terms in the same
+/// transaction. The 1-based number is unique across every currency the pressing sells
+/// in. Aborts if the run is paused or has not opened yet — the run-wide switch is
+/// checked here, so no sale path can miss it.
 public(package) fun mint_next<Currency>(
     self: &mut Pressing,
+    purchased_by: address,
     purchase_price: u64,
     clock: &Clock,
 ): Record<Certificate> {
@@ -265,6 +266,7 @@ public(package) fun mint_next<Currency>(
     let certificate = certificate::new<Currency>(
         self.id.to_inner(),
         self.supply,
+        purchased_by,
         purchase_price,
         clock.timestamp_ms(),
     );
