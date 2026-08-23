@@ -227,7 +227,7 @@ public fun new<Currency>(
 /// address — under `Floor`, anything above the floor is kept as a tip, not refunded.
 /// The record's number is the pressing's next 1-based value, shared with every other
 /// currency selling the same run, and its UID is derived off the pressing. The sale's
-/// terms are embedded in the record's `Certificate`.
+/// transaction sender and terms are embedded in the record's `Certificate`.
 ///
 /// Both switches must be open: this listing `Enabled`, checked here, and the run
 /// selling at this moment, checked in `pressing::mint_next`.
@@ -258,8 +258,10 @@ public fun buy<Currency>(
     };
 
     // The pressing owns the number, checks the run-wide switch, stamps the record's
-    // birth date off the clock, and embeds what was just paid in its certificate.
-    let record = pressing.mint_next<Currency>(paid, clock);
+    // birth date off the clock, and embeds who purchased it and what they paid. Read
+    // the sender once so the certificate and sale event cannot disagree.
+    let purchased_by = ctx.sender();
+    let record = pressing.mint_next<Currency>(purchased_by, paid, clock);
 
     emit(RecordSoldEvent<Currency> {
         listing_id: self.id.to_inner(),
@@ -270,7 +272,7 @@ public fun buy<Currency>(
         number: pressing.supply(),
         price: self.price,
         paid,
-        buyer: ctx.sender(),
+        buyer: purchased_by,
     });
 
     record

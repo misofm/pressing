@@ -13,6 +13,7 @@ use miso_record::record::{Self, Record};
 use std::unit_test::{assert_eq, destroy};
 use sui::balance;
 use sui::clock::{Self, Clock};
+use sui::derived_object;
 use sui::event;
 use sui::sui::SUI;
 use sui::test_scenario as ts;
@@ -63,6 +64,7 @@ fun buy_presses_the_record_and_certifies_what_was_paid() {
     let c = r.certificate();
     assert_eq!(c.parent_id(), pressing_id);
     assert_eq!(c.number(), 1);
+    assert_eq!(c.purchased_by(), @0xA);
     assert_eq!(c.purchase_price(), 8); // the full 8, tip included
     assert_eq!(c.purchase_currency(), std::type_name::with_defining_ids<SUI>());
     assert_eq!(c.created_at_ms(), 0);
@@ -111,6 +113,7 @@ fun sale_event_captures_the_accepted_offer_and_result() {
     assert_eq!(price, listing::new_floor_price(5));
     assert_eq!(paid, 8);
     assert_eq!(buyer, @0xA);
+    assert_eq!(record.certificate().purchased_by(), buyer);
 
     record::destroy(record);
     l.destroy_for_testing();
@@ -500,7 +503,10 @@ fun listing_new_aborts_with_a_cap_for_another_pressing() {
     p.destroy_for_testing(admin);
 }
 
-#[test, expected_failure] // derived_object::claim aborts: ListingKey<SUI>() is claim-once
+#[test, expected_failure(
+    abort_code = derived_object::EObjectAlreadyExists,
+    location = derived_object,
+)]
 fun a_pressing_cannot_be_listed_twice_in_one_currency() {
     let mut ctx = tx_context::new_from_hint(@0xA, 0, 0, 0, 0);
     let (mut p, admin) = pressing::new_for_testing(id(@0xBEEF), &mut ctx);
@@ -637,6 +643,7 @@ fun buyer_purchase_is_end_to_end_across_transactions() {
     assert_eq!(purchased.release_id(), release_id);
     assert_eq!(cert.parent_id(), pressing_id);
     assert_eq!(cert.number(), 1);
+    assert_eq!(cert.purchased_by(), buyer);
     assert_eq!(cert.purchase_currency(), std::type_name::with_defining_ids<SUI>());
     assert_eq!(cert.purchase_price(), 8);
     assert_eq!(cert.created_at_ms(), 1_726_000_123);
@@ -681,6 +688,7 @@ fun buyer_purchase_is_end_to_end_across_transactions() {
     sc.next_tx(buyer);
     let purchased = sc.take_from_sender<Record<Certificate>>();
     assert_eq!(object::id(&purchased), record_id);
+    assert_eq!(purchased.certificate().purchased_by(), buyer);
     assert_eq!(purchased.certificate().purchase_price(), 8);
     record::destroy(purchased);
     let mut destroyed = event::events_by_type<record::RecordDestroyedEvent<Certificate>>();

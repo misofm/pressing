@@ -87,11 +87,11 @@ Release
 
 - **One embedded certificate.** A number is only meaningful inside the sequence that
   issued it, and what a copy sold for is a fact about the same sale — so `mint_next`
-  creates `Certificate { parent_id, number, purchase_currency, purchase_price,
-  created_at_ms }` and passes it directly to `record::new`. The result is a
-  `Record<Certificate>` whose certificate is present from birth, cannot be detached,
-  and is read with `record.certificate()`. `Certificate` has `drop, store` but not
-  `copy`; its fields are private and its constructor is `public(package)`, so an
+  creates `Certificate { parent_id, number, purchased_by, purchase_currency,
+  purchase_price, created_at_ms }` and passes it directly to `record::new`. The result
+  is a `Record<Certificate>` whose certificate is present from birth, cannot be
+  detached, and is read with `record.certificate()`. `Certificate` has `drop, store`
+  but not `copy`; its fields are private and its constructor is `public(package)`, so an
   external package cannot construct this trusted specialization. The stored parent
   and number also make provenance explicit: the record id must equal
   `record::derive_address(certificate.parent_id(), certificate.number()).to_id()`.
@@ -104,16 +104,18 @@ Release
   `balance::withdraw_funds_from_object` is gated on `&mut UID` alone — so the release
   cap can withdraw the sales revenue `buy` forwards to the release's address. Under one
   cap, "may reprice a listing" and "may take the money" would be the same grant. The
-  pressing cap is the routine one, safe to delegate to whoever runs the shop; the
-  release cap stays with the rightsholder. Both are `key, store`, so a vault or multisig
-  can custody them — the package implements no recovery.
+  caps may be held together. If separated, the pressing cap remains issuance authority:
+  it controls listing creation, price, and availability, but cannot withdraw revenue.
+  Both are `key, store`, so a vault or multisig can custody them — the package implements
+  no recovery.
 
 - **Minting authority is the certificate constructor.** `miso_record` intentionally
   allows any package to create its own `Record<C>` specialization. Trust attaches to
   the concrete certificate type: only this package can construct
   `miso_pressing::certificate::Certificate`, and production construction occurs only
-  on the paid pressing path. There is no shared settings object, allowlist, or mint
-  witness in this architecture.
+  on the listing purchase path. A listing may be free, so the certificate attests to the
+  recorded sale terms rather than to nonzero payment. There is no shared settings object,
+  allowlist, or mint witness in this architecture.
 
 ## Usage
 

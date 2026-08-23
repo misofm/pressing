@@ -18,6 +18,8 @@ public struct Certificate has drop, store {
     parent_id: ID,
     /// Position in the pressing's run (1-based).
     number: u64,
+    /// The transaction sender that purchased the record from its listing.
+    purchased_by: address,
     /// The currency type the buyer paid in.
     purchase_currency: TypeName,
     /// The exact amount paid. Under a floor price this includes any tip above it.
@@ -33,12 +35,14 @@ public struct Certificate has drop, store {
 public(package) fun new<Currency>(
     parent_id: ID,
     number: u64,
+    purchased_by: address,
     purchase_price: u64,
     created_at_ms: u64,
 ): Certificate {
     Certificate {
         parent_id,
         number,
+        purchased_by,
         purchase_currency: type_name::with_defining_ids<Currency>(),
         purchase_price,
         created_at_ms,
@@ -53,6 +57,10 @@ public fun parent_id(self: &Certificate): ID {
 
 public fun number(self: &Certificate): u64 {
     self.number
+}
+
+public fun purchased_by(self: &Certificate): address {
+    self.purchased_by
 }
 
 public fun purchase_currency(self: &Certificate): TypeName {

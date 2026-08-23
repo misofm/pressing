@@ -10,6 +10,7 @@ use miso_pressing::pressing::{Self, Pressing};
 use miso_pressing::test_utils::{a_release, clock_at, id};
 use miso_record::record;
 use std::unit_test::{assert_eq, destroy};
+use sui::derived_object;
 use sui::event;
 use sui::sui::SUI;
 use sui::test_scenario as ts;
@@ -67,7 +68,7 @@ fun events_capture_opening_and_every_state_transition() {
 
     // The first sale settles Scheduled to Active, then an explicit pause emits the
     // next transition. Event order is the state history an indexer will replay.
-    let record = p.mint_next<SUI>(0, &clk);
+    let record = p.mint_next<SUI>(@0xA, 0, &clk);
     p.set_state(&admin, pressing::new_paused_state());
 
     let changed = event::events_by_type<pressing::PressingStateChangedEvent>();
@@ -100,9 +101,9 @@ fun numbers_advance_gap_free_and_records_are_addressable() {
     assert!(p.record_id(1).is_none());
 
     // The counter picks every number; a caller never gets to choose one.
-    let r1 = p.mint_next<SUI>(10, &clk);
-    let r2 = p.mint_next<SUI>(10, &clk);
-    let r3 = p.mint_next<SUI>(10, &clk);
+    let r1 = p.mint_next<SUI>(@0xA, 10, &clk);
+    let r2 = p.mint_next<SUI>(@0xA, 10, &clk);
+    let r3 = p.mint_next<SUI>(@0xA, 10, &clk);
 
     // The number is the pressing's certificate on the record, not a field of it.
     let c1 = r1.certificate();
@@ -136,11 +137,12 @@ fun the_certificate_carries_the_number_and_the_terms_it_sold_on() {
     let clk = clock_at(1_000, &mut ctx);
     let (mut p, admin) = pressing::new_for_testing(id(@0xBEEF), &mut ctx);
 
-    let r = p.mint_next<SUI>(42, &clk);
+    let r = p.mint_next<SUI>(@0xA, 42, &clk);
     let c = r.certificate();
 
     assert_eq!(c.parent_id(), object::id(&p));
     assert_eq!(c.number(), 1);
+    assert_eq!(c.purchased_by(), @0xA);
     assert_eq!(c.purchase_price(), 42);
     assert_eq!(c.purchase_currency(), std::type_name::with_defining_ids<SUI>());
     assert_eq!(c.created_at_ms(), 1_000);
@@ -159,7 +161,7 @@ fun a_scheduled_run_presses_nothing_before_its_start() {
     let (mut p, admin) = pressing::new_for_testing(id(@0xBEEF), &mut ctx);
 
     p.set_state(&admin, pressing::new_scheduled_state(100)); // opens later
-    let r = p.mint_next<SUI>(0, &clk);
+    let r = p.mint_next<SUI>(@0xA, 0, &clk);
 
     record::destroy(r);
     p.destroy_for_testing(admin);
@@ -182,7 +184,7 @@ fun a_scheduled_run_opens_itself_at_its_start() {
     assert_eq!(*p.start_timestamp_ms().borrow(), 100);
 
     // The first sale settles the state on its way through.
-    let r = p.mint_next<SUI>(0, &clk);
+    let r = p.mint_next<SUI>(@0xA, 0, &clk);
     assert_eq!(r.certificate().number(), 1);
     assert!(p.is_active());
     assert!(!p.is_scheduled());
@@ -202,7 +204,7 @@ fun the_start_is_inclusive() {
     // Exactly on the moment, not a millisecond after.
     p.set_state(&admin, pressing::new_scheduled_state(100));
     assert!(p.is_selling(&clk));
-    let r = p.mint_next<SUI>(0, &clk);
+    let r = p.mint_next<SUI>(@0xA, 0, &clk);
     assert!(p.is_active());
 
     record::destroy(r);
@@ -222,7 +224,7 @@ fun pausing_a_scheduled_run_outranks_a_moment_that_has_passed() {
     p.set_state(&admin, pressing::new_scheduled_state(100));
     p.set_state(&admin, pressing::new_paused_state());
     assert!(!p.is_selling(&clk));
-    let r = p.mint_next<SUI>(0, &clk);
+    let r = p.mint_next<SUI>(@0xA, 0, &clk);
 
     record::destroy(r);
     p.destroy_for_testing(admin);
@@ -245,7 +247,7 @@ fun a_run_walks_scheduled_then_active_then_paused_then_active() {
     p.set_state(&admin, pressing::new_active_state());
     assert!(p.is_selling(&clk));
     assert!(p.start_timestamp_ms().is_none());
-    let r1 = p.mint_next<SUI>(0, &clk);
+    let r1 = p.mint_next<SUI>(@0xA, 0, &clk);
 
     // Stopped, and the sequence holds where it was.
     p.set_state(&admin, pressing::new_paused_state());
@@ -255,7 +257,7 @@ fun a_run_walks_scheduled_then_active_then_paused_then_active() {
 
     // Started again: the run picks up at 2, never at 1.
     p.set_state(&admin, pressing::new_active_state());
-    let r2 = p.mint_next<SUI>(0, &clk);
+    let r2 = p.mint_next<SUI>(@0xA, 0, &clk);
     assert_eq!(r1.certificate().number(), 1);
     assert_eq!(r2.certificate().number(), 2);
 
@@ -280,7 +282,7 @@ fun set_state_pauses_and_resumes_the_whole_run() {
     // Resuming picks the sequence back up where it left off — nothing came down.
     p.set_state(&admin, pressing::new_active_state());
     assert!(p.is_active());
-    let r = p.mint_next<SUI>(0, &clk);
+    let r = p.mint_next<SUI>(@0xA, 0, &clk);
     assert_eq!(r.certificate().number(), 1);
 
     record::destroy(r);
@@ -295,7 +297,7 @@ fun a_paused_pressing_presses_nothing() {
     let (mut p, admin) = pressing::new_for_testing(id(@0xBEEF), &mut ctx);
 
     p.set_state(&admin, pressing::new_paused_state());
-    let r = p.mint_next<SUI>(0, &clk);
+    let r = p.mint_next<SUI>(@0xA, 0, &clk);
 
     record::destroy(r);
     p.destroy_for_testing(admin);
@@ -344,7 +346,10 @@ fun new_aborts_with_a_cap_for_another_release() {
     destroy(cap2);
 }
 
-#[test, expected_failure] // derived_object::claim aborts: PressingKey() is claim-once
+#[test, expected_failure(
+    abort_code = derived_object::EObjectAlreadyExists,
+    location = derived_object,
+)]
 fun a_release_can_only_ever_open_one_pressing() {
     let mut ctx = tx_context::new_from_hint(@0xA, 0, 0, 0, 0);
     let (mut rel, cap) = a_release(&mut ctx);
