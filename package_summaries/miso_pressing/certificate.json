@@ -342,7 +342,7 @@
           },
           "created_at_ms": {
             "index": 5,
-            "doc": " The timestamp stamped from the shared Clock on the pressing path.",
+            "doc": " The timestamp stamped from the shared Clock on the Listing purchase path.",
             "type_": "u64"
           }
         }

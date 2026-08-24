@@ -5,5 +5,5 @@ license = "Apache-2.0"
 authors = ["Miso Labs, Inc. (build@miso.network)"]
 
 [dependencies]
-miso = { local = "../../../misonetwork/protocol" }
-miso_record = { local = "../../record/move" }
+miso = { local = "../../misonetwork/protocol" }
+miso_record = { local = "../record/move" }

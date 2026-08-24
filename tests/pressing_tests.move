@@ -177,7 +177,7 @@ fun a_scheduled_run_opens_itself_at_its_start() {
     p.set_state(&admin, pressing::new_scheduled_state(100));
 
     // Past the start the run already sells, before anyone has touched it — nobody has
-    // to go first for the drop to be open.
+    // to go first for the Pressing to be open.
     assert!(p.is_selling(&clk));
     assert!(p.is_scheduled());
     assert!(!p.is_active());
@@ -237,7 +237,7 @@ fun a_run_walks_scheduled_then_active_then_paused_then_active() {
     let clk = clock_at(50, &mut ctx);
     let (mut rel, cap) = a_release(&mut ctx);
 
-    // Opened for a drop moment an hour out: nobody can buy early.
+    // Scheduled to start an hour out: nobody can buy early.
     let (mut p, admin) = pressing::new(&mut rel, &cap, pressing::new_scheduled_state(100));
     assert!(p.is_scheduled());
     assert!(!p.is_selling(&clk));

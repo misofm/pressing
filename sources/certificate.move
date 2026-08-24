@@ -24,7 +24,7 @@ public struct Certificate has drop, store {
     purchase_currency: TypeName,
     /// The exact amount paid. Under a floor price this includes any tip above it.
     purchase_price: u64,
-    /// The timestamp stamped from the shared Clock on the pressing path.
+    /// The timestamp stamped from the shared Clock on the Listing purchase path.
     created_at_ms: u64,
 }
 

@@ -240,7 +240,7 @@ fun a_paused_pressing_beats_an_enabled_listing() {
 }
 
 #[test, expected_failure(abort_code = pressing::ENotStarted, location = pressing)]
-fun an_enabled_listing_sells_nothing_before_the_drop_moment() {
+fun an_enabled_listing_sells_nothing_before_the_scheduled_start() {
     let mut ctx = tx_context::new_from_hint(@0xA, 0, 0, 0, 0);
     let mut clk = clock::create_for_testing(&mut ctx);
     clk.set_for_testing(50);
@@ -250,7 +250,7 @@ fun an_enabled_listing_sells_nothing_before_the_drop_moment() {
         &mut ctx,
     );
 
-    // The drop is scheduled run-wide, so listing a currency early does not open it.
+    // The start is scheduled run-wide, so listing a currency early does not open it.
     p.set_state(&admin, pressing::new_scheduled_state(100));
     assert!(!l.is_live(&p, &clk));
     let r = l.buy(&mut p, balance::zero<SUI>(), &clk, &ctx);
@@ -262,7 +262,7 @@ fun an_enabled_listing_sells_nothing_before_the_drop_moment() {
 }
 
 #[test]
-fun the_drop_moment_opens_every_currency_at_once() {
+fun the_scheduled_start_opens_every_currency_at_once() {
     let mut ctx = tx_context::new_from_hint(@0xA, 0, 0, 0, 0);
     let mut clk = clock::create_for_testing(&mut ctx);
     clk.set_for_testing(150);
@@ -282,7 +282,7 @@ fun the_drop_moment_opens_every_currency_at_once() {
         &mut ctx,
     );
 
-    // One schedule on the run, not one per rail — a drop moment is a fact about the
+    // One schedule on the run, not one per rail — the start is a fact about the
     // release going on sale, and both currencies open on it together.
     p.set_state(&admin, pressing::new_scheduled_state(100));
     assert!(sui_l.is_live(&p, &clk));

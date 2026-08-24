@@ -6,12 +6,12 @@
   "doc": " Represents a musical composition (song, instrumental work) in Miso.\n Compositions are the underlying written works that recordings are based on.\n Each composition has its own share token for ownership distribution.\n\n ### Key Features:\n\n - Share token initialization with fixed supply (10M tokens, 6 decimals)\n - State machine: Initialized -> Published (embedded fields immutable after\n   publish; dynamic fields remain extensible via `uid_mut`)\n - Deterministic addresses via derived object pattern\n\n Attribution (credits) is intentionally NOT part of core: it is\n display-oriented, varies across platforms, and is never read by the\n economics. It lives in a first-party credits extension attached via\n `uid_mut`, so core takes no dependency on an identity package and core\n publish enforces no attribution.\n\n ### Lifecycle and trust model\n\n A composition is `key`-only with no `drop`: a fresh `Initialized` object\n cannot be transferred, wrapped, publicly shared, or discarded, and its only\n by-value consumer is `publish`. Create-and-publish is therefore atomic by\n construction — an `Initialized` composition cannot outlive its creating\n transaction, and every composition that exists on-chain is `Published` and\n shared. There is deliberately no keep function; staged building must fit\n one transaction.\n\n `uid_mut` works in any lifecycle state and is permanent root over ALL\n dynamic fields on the object — including fields attached by other\n extensions. \"Immutable after publish\" covers the embedded fields only;\n extension-layer data stays admin-mutable in perpetuity. This is the\n designed extension surface, and it is the one trust assumption that never\n expires: integrators should model the cap holder as able to mutate or\n delete any extension data, forever.",
   "immediate_dependencies": [
     {
-      "address": "0x93b3b214ad031ef9c340543eeafccac74d6a9232ce9506751fbeccea850a0823",
-      "name": "bps"
+      "address": "0x2d702401ba9e421abd6adc22c2691a526733bd384477073f89c4445d16c2b214",
+      "name": "share"
     },
     {
-      "address": "0xc7ce7f2187add1e5cffa21ad7f10f2ea43ebde6ddfa0921030b37057724840fd",
-      "name": "share"
+      "address": "0x93b3b214ad031ef9c340543eeafccac74d6a9232ce9506751fbeccea850a0823",
+      "name": "bps"
     },
     {
       "address": "std",

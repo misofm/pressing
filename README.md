@@ -36,7 +36,7 @@ Release
 - **The listing key is phantom-typed.** `ListingKey<Currency>()` puts the currency in
   the key's *type* rather than in a stored `TypeName`, so distinct currencies are
   distinct key types and `derived_object::claim` enforces once-per-currency by itself.
-  That is what lets the pressing drop its currency set entirely.
+  That is what lets the pressing omit a currency set entirely.
 
 - **The listing owns the offer, and it is permanent.** Price and state, per currency,
   and nothing else. A pressing sold in SUI and USDC has two listings drawing on one
@@ -58,19 +58,19 @@ Release
 
 - **Two switches, and the schedule is run-wide.** The pressing walks
   `Scheduled { start } → Active → Paused → Active`, checked in `mint_next` so no sale
-  path can miss it. `Scheduled` is the trustless drop moment: nobody can buy before the
+  path can miss it. `Scheduled` is the trustless opening time: nobody can buy before the
   start, and at the start the run opens itself with no artist transaction. Below it,
   each listing is `Enabled | Disabled`: one currency, leaving the others alone. A sale
   needs both open.
 
   The transition is **real, not computed**, and it lives in `mint_next` — a sale is
   the only thing that can reach it, and a sale already holds `&mut Pressing`. The first
-  purchase past the drop moment rewrites `Scheduled` to `Active` before any sales logic
+  purchase past the scheduled start rewrites `Scheduled` to `Active` before any sales logic
   runs, so every later reader sees a plain `Active` run rather than a schedule it has to
   re-evaluate. It is the one state change no capability gates: the clock is the
   authority, and it only makes good on what the schedule already promised. Until that
   first sale nothing is stale in any way that matters — `is_selling(&clock)` reads a due
-  `Scheduled` as selling, so nobody has to go first for the drop to be open.
+  `Scheduled` as selling, so nobody has to go first for the Pressing to be open.
 
   The cost is that the start time leaves the object at the transition:
   `start_timestamp_ms()` is `none` on a settled run. "When was this run scheduled for"
@@ -78,9 +78,9 @@ Release
   carry the state, which is why the opened event breaks the pointer-event rule and
   carries a value at all.
 
-  The **when** lives on the pressing rather than the listing because a drop moment is a
+  The **when** lives on the pressing rather than the listing because its opening time is a
   fact about the release going on sale, not about one payment rail — a run that opened
-  in SUI at Friday 8pm and in USDC at some other time would have two drop moments and
+  in SUI at Friday 8pm and in USDC at some other time would have two starts and
   one number sequence. There is still no end state and no expiry: an uncapped,
   permanent run has nothing to count down to, and a time-limited sale is scarcity
   theater this design rejects. Ending a campaign is `set_state(Paused)`.
@@ -169,35 +169,31 @@ the drift a shared view prevents. `authorize` and `uid` on the pressing are
 ## Layout
 
 ```
-move/
-  sources/pressing.move     the run: counter, schedule + switch, certificate minting, cap
-  sources/listing.move      one currency's offer: price, state, buy
-  sources/certificate.move  embedded provenance: parent, number, currency, price, time
-  tests/
+sources/pressing.move     the run: counter, schedule + switch, certificate minting, cap
+sources/listing.move      one currency's offer: price, state, buy
+sources/certificate.move  embedded provenance: parent, number, currency, price, time
+tests/
 ```
 
 Depends on [`miso-record`](https://github.com/misonetwork/miso-record) (the generic
 `Record<Certificate>`) and the miso-protocol (`Release` / `ReleaseAdminCap`), as
-local checkouts at the paths used by `move/Move.toml`:
+local checkouts at the paths used by `Move.toml`:
 
 ```toml
-miso = { local = "../../../misonetwork/protocol" }
-miso_record = { local = "../../record/move" }
+miso = { local = "../../misonetwork/protocol" }
+miso_record = { local = "../record/move" }
 ```
 
 ## Build
 
 ```bash
-cd move && sui move test
+sui move test
 ```
 
 ## Publication status
 
-This version requires a fresh publication. It is not a compatible upgrade of the
-legacy Testnet package: `miso_record::record::Record` is now generic over an embedded
-certificate, and this package's `Certificate` layout and abilities changed while the
-old `Settings`/`MintWitness` API was removed. Previously published package and object
-IDs therefore do not identify this architecture. The legacy `Published.toml` has been
-removed intentionally; a new one should be committed only after the fresh publication.
+The permanent Pressing/Listing architecture is published on Testnet at
+`0x95fba53c968978f75d6ca8a5e6f0f3ba83fdc3af301bc8419be354a3990af5b9`.
+`Published.toml` records the publication metadata used by the SDK deployment map.
 
 License: Apache-2.0

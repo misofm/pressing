@@ -1,7 +1,7 @@
 # Move
-move/build/
-move/.coverage_map.mvcov
-move/traces/
+build/
+.coverage_map.mvcov
+traces/
 
 # OS
 .DS_Store

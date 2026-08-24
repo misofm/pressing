@@ -59,10 +59,10 @@ revenue redirected; caps confused across pressings; assets stranded.
   shared at creation. Records are returned to the buyer's transaction.
   Nothing has a destructor — deliberate, so a derived subtree can never be
   stranded (`pressing.move:35-38`).
-- **Scheduled drop.** The `Scheduled → Active` transition fires inside
+- **Scheduled opening.** The `Scheduled → Active` transition fires inside
   `mint_next` against the shared `Clock` (`:252-260`); before the start,
   `ENotStarted` aborts; `is_selling` reads the same clock so the run sells
-  at its drop moment with no "first caller" requirement. Nobody can buy
+  at its scheduled start with no "first caller" requirement. Nobody can buy
   early; the artist cannot be front-run on the transition (it's
   clock-authorized, not caller-authorized).
 - **Certificate trust.** `Certificate` is constructible only in-package
@@ -106,4 +106,4 @@ Unit tests in `tests/pressing_tests.move` and `tests/listing_tests.move`
 (plus `test_utils.move`) exercise the lifecycle, both price policies, the
 foreign-cap abort, and derived-address assertions. Dependency behavior
 (`miso::release` cap check, `miso_record::record::new` derived claim)
-verified against the pinned build copies under `pressing/move/build/`.
+verified against the pinned build copies under `pressing/build/`.
