@@ -3,8 +3,12 @@
     "address": "0xc7ce7f2187add1e5cffa21ad7f10f2ea43ebde6ddfa0921030b37057724840fd",
     "name": "share"
   },
-  "doc": " Fixed-supply currency issuance for representing equity-like ownership stakes.\n\n ### Usage:\n\n 1. Create a package with a `share` module containing a `Share` type\n 2. Create a currency with `sui::coin_registry::new_currency`\n 3. Delete the metadata cap via `finalize_and_delete_metadata_cap`\n 4. Call `share::share::initialize` with the currency and treasury cap\n 5. Distribute the returned balance to shareholders",
+  "doc": " Fixed-supply currency issuance for representing equity-like ownership stakes.\n\n ### Usage:\n\n 1. Create a package with a `share` module containing a `Share` type\n 2. Create a currency with `sui::coin_registry::new_currency`\n 3. Delete the metadata cap via `finalize_and_delete_metadata_cap`\n 4. Call `miso_share::share::initialize` with the currency and its canonical\n    treasury cap (the one created together with the currency)\n 5. Distribute the returned balance to shareholders",
   "immediate_dependencies": [
+    {
+      "address": "std",
+      "name": "option"
+    },
     {
       "address": "std",
       "name": "type_name"
@@ -28,6 +32,10 @@
     {
       "address": "sui",
       "name": "event"
+    },
+    {
+      "address": "sui",
+      "name": "object"
     }
   ],
   "attributes": [],
