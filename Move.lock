@@ -23,7 +23,7 @@ manifest_digest = "5745706258F61D6CE210904B3E6AE87A73CE9D31A6F93BE4718C442529332
 deps = { std = "MoveStdlib", sui = "Sui" }
 
 [pinned.testnet.miso]
-source = { local = "../../misonetwork/protocol" }
+source = { git = "https://github.com/misonetwork/protocol.git", subdir = ".", rev = "7bda0bb740c32a75ef76c0739cb671b3de77d338" }
 use_environment = "testnet"
 manifest_digest = "74A38A95D110CE1D6341D77397F2B998A094776B675062542A1A27751B047E3B"
 deps = { bps = "bps", miso_share = "miso_share", std = "MoveStdlib", sui = "Sui" }
@@ -31,11 +31,11 @@ deps = { bps = "bps", miso_share = "miso_share", std = "MoveStdlib", sui = "Sui"
 [pinned.testnet.miso_pressing]
 source = { root = true }
 use_environment = "testnet"
-manifest_digest = "1EFF3CAD9A54AD9686264CF1E140ED3E6600CBD3CDD6E1E4ECA57BCDBF484918"
+manifest_digest = "E8F82947102169ABCE81F995001F84CADF144F62E6A1C064FE5DBE752D31A9E9"
 deps = { miso = "miso", miso_record = "miso_record", std = "MoveStdlib", sui = "Sui" }
 
 [pinned.testnet.miso_record]
-source = { local = "../record/move" }
+source = { git = "https://github.com/misofm/record.git", subdir = "move", rev = "aaf091b18cdd551677a6d604bf0902919c31f366" }
 use_environment = "testnet"
 manifest_digest = "5745706258F61D6CE210904B3E6AE87A73CE9D31A6F93BE4718C442529332A87"
 deps = { std = "MoveStdlib", sui = "Sui" }
