@@ -909,9 +909,72 @@
       ],
       "return_": []
     },
-    "restrict": {
+    "original_package_id": {
       "source_index": 23,
       "index": 23,
+      "doc": " The original (first-version) ID of the package that this cap authorizes upgrades for.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "cap",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "sui",
+                    "name": "package"
+                  },
+                  "name": "UpgradeCap",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        {
+          "Datatype": {
+            "module": {
+              "address": "sui",
+              "name": "object"
+            },
+            "name": "ID",
+            "type_arguments": []
+          }
+        }
+      ]
+    },
+    "original_package_id_impl": {
+      "source_index": 24,
+      "index": 24,
+      "doc": " Returns the original package id for the given `package_id` that must be `version` of the package.\n If `package_id`'s version is not `version`, `EInvalidPackageVersion` will be raised.",
+      "attributes": [],
+      "visibility": "Private",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "package_id",
+          "type_": "address"
+        },
+        {
+          "name": "version",
+          "type_": "u64"
+        }
+      ],
+      "return_": [
+        "address"
+      ]
+    },
+    "restrict": {
+      "source_index": 25,
+      "index": 25,
       "doc": null,
       "attributes": [],
       "visibility": "Private",
