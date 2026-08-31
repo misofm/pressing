@@ -16,22 +16,21 @@ Release
 
 ## Design
 
-- **One pressing, one run, no editions.** Every copy a release ever sells draws its
-  number from the pressing's single counter, forever. There are no supply caps and no
+- **One pressing, one sale run, no editions.** Every copy a release ever sells draws
+  its canonical number from `RecordRegistry`'s per-release counter. The Pressing's
+  `supply` is only the count sold through this sales implementation. There are no supply caps and no
   sold-out state — scarcity on Miso is what a record *accrues* over its life (playtime
   above all), not how few of it were printed. Bot pressure on a capped run is denial;
   on an uncapped one it is revenue.
 
-- **Everything is address math.** A `Pressing`'s UID is derived off its `Release`'s UID
+- **Identity is address math.** A `Pressing`'s UID is derived off its `Release`'s UID
   at a singleton key (claim-once: a release can only ever open one pressing), the admin
-  cap's and each `Listing`'s off the pressing's, and `Record` UIDs off the pressing's at
-  their number. Every object in the tree is reachable from the release id alone, by pure
-  computation — no registry, no pointer to maintain, and **no stored set of listings**: a
+  cap's and each `Listing`'s off the pressing's. There is **no stored set of listings**: a
   listing either exists at its derived address or it does not (`listing::has_listing`),
-  and `ListingOpenedEvent<Currency>` enumerates them for an indexer. The numbers are
-  gap-free by construction. The Record creation event names the pressing parent,
-  number, and authorized witness; the record id must equal
-  `record::derive_address(pressing_id, number).to_id()`.
+  and `ListingOpenedEvent<Currency>` enumerates them for an indexer. Record UIDs come
+  from the separate singleton Registry, so the record id must equal
+  `record::derive_address(registry_id, release_id, number).to_id()`. This preserves the
+  namespace and numbering if Pressing is replaced wholesale.
 
 - **The listing key is phantom-typed.** `ListingKey<Currency>()` puts the currency in
   the key's *type* rather than in a stored `TypeName`, so distinct currencies are
@@ -85,21 +84,22 @@ Release
   permanent run has nothing to count down to, and a time-limited sale is scarcity
   theater this design rejects. Ending a campaign is `set_state(Paused)`.
 
-- **One concrete Record, one authorized witness.** `miso_record::Record` is Miso's
+- **One concrete Record, one active sales witness.** `miso_record::Record` is Miso's
   distribution format, not a generic substrate. `pressing::MintWitness` is
   non-copyable and constructible only inside the `pressing` module; `mint_next` is its
   sole constructor path. The shared `miso_record::settings::Settings` must authorize
   that witness type before a listing can mint. This keeps one stable Record type while
-  allowing Miso to add or revoke distribution mechanisms as state changes. Pressing
-  remains the Record UID's parent—there is no global Record registry or shared mint
-  counter—so unrelated distribution paths do not serialize through one object.
+  allowing Miso to replace the complete sales mechanism with one Settings update.
+  `RecordRegistry`, not Pressing, is the UID parent and canonical per-release counter.
+  Every purchase therefore mutates the same shared Registry object; this deliberate
+  serialization is the cost of keeping identity stable across sales-package changes.
 
-- **Sale facts are events, not Record schema.** Currency is in the
-  `RecordSoldEvent<Currency>` type; the event also snapshots the listing, pressing,
+- **Records and sale events carry complementary provenance.** Record stores its
+  Registry, release, number, creation time, purchase currency, and original purchaser.
+  `RecordSoldEvent<Currency>` additionally snapshots the listing, pressing,
   release, Record, number, accepted price, paid amount, buyer, and clock timestamp.
-  `RecordCreatedEvent` independently records the parent, number, and authorized
-  witness. Those facts are indexable without making every Record carry Pressing's
-  sales vocabulary forever.
+  `RecordCreatedEvent` independently records the Registry, number, and authorized
+  witness. Price and paid amount stay sale-specific.
 
 - **Two caps, split along the money.** Opening a pressing needs the release's
   `ReleaseAdminCap` (the protocol's `release::uid_mut` enforces it) and hands back a
@@ -114,11 +114,12 @@ Release
   Both are `key, store`, so a vault or multisig can custody them — the package implements
   no recovery.
 
-- **Minting authority is explicit and revocable.** Authorizing
-  `miso_pressing::pressing::MintWitness` enables this distribution path; revoking it
+- **Minting authority is explicit and replaceable.** Setting
+  `miso_pressing::pressing::MintWitness` as the active witness enables this path;
+  clearing or replacing it
   makes even an otherwise valid free or paid listing abort in `record::mint`. Settings
-  is borrowed immutably on purchases, so different Pressings can still execute in
-  parallel.
+  is borrowed immutably on purchases. The Registry remains the intentionally mutable
+  shared input.
 
 ## Usage
 
@@ -140,8 +141,15 @@ Then, per sale:
 
 ```move
 // `payment` is a Balance<SUI> — off the buyer's accumulator, or `coin.into_balance()`.
-let record: Record = listing.buy(&mut pressing, payment, &record_settings, &clock, ctx);
-record::transfer(record, buyer);
+let record: Record = listing.buy(
+    &mut pressing,
+    &mut record_registry,
+    payment,
+    &record_settings,
+    &clock,
+    ctx,
+);
+transfer::public_transfer(record, buyer);
 ```
 
 Adding a currency to a live pressing is just another `listing::new` — once per currency,
@@ -162,8 +170,8 @@ pressing.set_state(&admin_cap, pressing::new_scheduled_state(t)); // reschedule 
 Deliberately small. The rule: **an off-chain client reads an object's fields over RPC,
 it never calls a view function** — so a view earns its place on chain only if another
 *Move* package needs it. Everything that was a one-line derivation of `state()`
-(`is_active`, `is_paused`, `is_scheduled`, `start_timestamp_ms`, `is_disabled`,
-`record_id`) is `#[test_only]`, which is stripped from the published bytecode.
+(`is_active`, `is_paused`, `is_scheduled`, `start_timestamp_ms`, `is_disabled`) is
+`#[test_only]`, which is stripped from the published bytecode.
 
 `is_selling(&clock)` and `is_live(&pressing, &clock)` are the exceptions that stay
 public: each composes several facts, and duplicating that logic in a caller is exactly
@@ -173,19 +181,18 @@ the drift a shared view prevents. `authorize` and `uid` on the pressing are
 ## Layout
 
 ```
-sources/pressing.move     the run: counter, schedule + switch, mint witness, cap
+sources/pressing.move     the run: sale count, schedule + switch, mint witness, cap
 sources/listing.move      one currency's offer: price, state, buy
 tests/
 ```
 
 Depends on [`miso-record`](https://github.com/misofm/record) (the concrete,
-key-only witness-authorized `Record`) and the miso-protocol (`Release` /
-`ReleaseAdminCap`). Both dependencies are pinned to reviewed git revisions so a
-checkout builds against the exact module-controlled transfer API it was tested with:
+Registry-derived `key + store` Record) and the miso-protocol (`Release` /
+`ReleaseAdminCap`). Both dependencies are pinned to reviewed git revisions:
 
 ```toml
 miso = { git = "https://github.com/misonetwork/protocol.git", rev = "7bda0bb740c32a75ef76c0739cb671b3de77d338" }
-miso_record = { git = "https://github.com/misofm/record.git", rev = "a235ffd41e8d2b1e76e1c7bba292e5ee11074e5b" }
+miso_record = { git = "https://github.com/misofm/record.git", rev = "c3f5310e0f52b1aa5553636c7f8edae7d01d0010" }
 ```
 
 ## Build
@@ -197,9 +204,9 @@ sui move test
 ## Publication status
 
 This version requires a fresh publication. It is not a compatible upgrade of the
-legacy Testnet package: `miso_record::record::Record` is now key-only and uses
-module-controlled transfer. Previously published package and object IDs do not
-identify this architecture. A new `Published.toml` should be committed only after
-the fresh publication.
+legacy Testnet package: Record now has `key + store`, a new field layout, and a
+singleton Registry; Listing purchases require that additional shared input.
+Previously published package and object IDs do not identify this architecture. A new
+`Published.toml` should be committed only after the fresh publication.
 
 License: Apache-2.0

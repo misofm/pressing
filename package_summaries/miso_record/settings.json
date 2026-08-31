@@ -3,8 +3,12 @@
     "address": "miso_record",
     "name": "settings"
   },
-  "doc": " Creation policy for Miso Records.\n\n `Settings` is a shared allowlist of witness types. A distribution module defines\n a witness whose construction it controls, the Miso admin authorizes that type,\n and the module consumes a witness when it calls `record::mint`. This lets Miso\n add distribution mechanisms without changing the `Record` type or redeploying\n this package.",
+  "doc": " Creation policy for Miso Records.\n\n `Settings` stores the one witness type currently authorized to create Records. A\n sales package defines a witness whose construction it controls, and the Miso admin\n may atomically replace that type when the complete sales implementation changes.\n Multiple purchase paths that coexist belong behind that sales package's one\n witness boundary.",
   "immediate_dependencies": [
+    {
+      "address": "std",
+      "name": "option"
+    },
     {
       "address": "std",
       "name": "type_name"
@@ -24,10 +28,6 @@
     {
       "address": "sui",
       "name": "tx_context"
-    },
-    {
-      "address": "sui",
-      "name": "vec_set"
     }
   ],
   "attributes": [],
@@ -113,10 +113,10 @@
         }
       ]
     },
-    "authorize": {
+    "set_witness": {
       "source_index": 2,
       "index": 2,
-      "doc": " Authorize witness type `W` to create Records. This is idempotent.\n\n `W` should be a module-controlled, non-copyable witness whose values are only\n created by the distribution path that Miso intends to authorize.",
+      "doc": " Make `W` the only witness type authorized to create Records. This atomically\n replaces the previous witness and is idempotent when `W` is already active.\n\n `W` should be a module-controlled, non-copyable witness whose values are only\n created by the sales paths that Miso intends to authorize.",
       "attributes": [],
       "visibility": "Public",
       "entry": false,
@@ -168,21 +168,14 @@
       ],
       "return_": []
     },
-    "revoke": {
+    "clear_witness": {
       "source_index": 3,
       "index": 3,
-      "doc": " Revoke witness type `W`. This is idempotent.",
+      "doc": " Remove the active witness, disabling all Record creation. This is idempotent.",
       "attributes": [],
       "visibility": "Public",
       "entry": false,
-      "type_parameters": [
-        {
-          "name": "W",
-          "constraints": [
-            "Drop"
-          ]
-        }
-      ],
+      "type_parameters": [],
       "parameters": [
         {
           "name": "self",
@@ -262,10 +255,10 @@
         "bool"
       ]
     },
-    "witnesses": {
+    "witness": {
       "source_index": 5,
       "index": 5,
-      "doc": " All currently authorized witness types.",
+      "doc": " The currently authorized witness type, if Record creation is enabled.",
       "attributes": [],
       "visibility": "Public",
       "entry": false,
@@ -292,15 +285,27 @@
       ],
       "return_": [
         {
-          "vector": {
-            "Datatype": {
-              "module": {
-                "address": "std",
-                "name": "type_name"
-              },
-              "name": "TypeName",
-              "type_arguments": []
-            }
+          "Datatype": {
+            "module": {
+              "address": "std",
+              "name": "option"
+            },
+            "name": "Option",
+            "type_arguments": [
+              {
+                "phantom": false,
+                "argument": {
+                  "Datatype": {
+                    "module": {
+                      "address": "std",
+                      "name": "type_name"
+                    },
+                    "name": "TypeName",
+                    "type_arguments": []
+                  }
+                }
+              }
+            ]
           }
         }
       ]
@@ -309,7 +314,7 @@
   "structs": {
     "Settings": {
       "index": 0,
-      "doc": " Shared allowlist of witness types authorized to create Records.",
+      "doc": " The single witness type currently authorized to create Records, if any.",
       "attributes": [],
       "abilities": [
         "Key"
@@ -332,16 +337,16 @@
               }
             }
           },
-          "witnesses": {
+          "witness": {
             "index": 1,
             "doc": null,
             "type_": {
               "Datatype": {
                 "module": {
-                  "address": "sui",
-                  "name": "vec_set"
+                  "address": "std",
+                  "name": "option"
                 },
-                "name": "VecSet",
+                "name": "Option",
                 "type_arguments": [
                   {
                     "phantom": false,
@@ -365,7 +370,7 @@
     },
     "SettingsAdminCap": {
       "index": 1,
-      "doc": " Authority to change the witness allowlist.",
+      "doc": " Authority to replace or clear the active witness type.",
       "attributes": [],
       "abilities": [
         "Key",
@@ -435,7 +440,7 @@
         }
       }
     },
-    "WitnessAuthorizedEvent": {
+    "WitnessSetEvent": {
       "index": 3,
       "doc": null,
       "attributes": [],
@@ -461,8 +466,36 @@
               }
             }
           },
-          "witness": {
+          "previous_witness": {
             "index": 1,
+            "doc": null,
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "std",
+                  "name": "option"
+                },
+                "name": "Option",
+                "type_arguments": [
+                  {
+                    "phantom": false,
+                    "argument": {
+                      "Datatype": {
+                        "module": {
+                          "address": "std",
+                          "name": "type_name"
+                        },
+                        "name": "TypeName",
+                        "type_arguments": []
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          "witness": {
+            "index": 2,
             "doc": null,
             "type_": {
               "Datatype": {
@@ -478,7 +511,7 @@
         }
       }
     },
-    "WitnessRevokedEvent": {
+    "WitnessClearedEvent": {
       "index": 4,
       "doc": null,
       "attributes": [],
