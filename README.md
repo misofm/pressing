@@ -138,6 +138,7 @@ Then, per sale:
 ```move
 // `payment` is a Balance<SUI> — off the buyer's accumulator, or `coin.into_balance()`.
 let record: Record<Certificate> = listing.buy(&mut pressing, payment, &clock, ctx);
+record::transfer(record, buyer);
 ```
 
 Adding a currency to a live pressing is just another `listing::new` — once per currency,
@@ -175,13 +176,14 @@ sources/certificate.move  embedded provenance: parent, number, currency, price, 
 tests/
 ```
 
-Depends on [`miso-record`](https://github.com/misonetwork/miso-record) (the generic
-`Record<Certificate>`) and the miso-protocol (`Release` / `ReleaseAdminCap`), as
-local checkouts at the paths used by `Move.toml`:
+Depends on [`miso-record`](https://github.com/misofm/record) (the generic,
+key-only `Record<Certificate>`) and the miso-protocol (`Release` /
+`ReleaseAdminCap`). Both dependencies are pinned to reviewed git revisions so a
+checkout builds against the exact module-controlled transfer API it was tested with:
 
 ```toml
-miso = { local = "../../misonetwork/protocol" }
-miso_record = { local = "../record/move" }
+miso = { git = "https://github.com/misonetwork/protocol.git", rev = "7bda0bb740c32a75ef76c0739cb671b3de77d338" }
+miso_record = { git = "https://github.com/misofm/record.git", subdir = "move", rev = "46dadad176ceadef8f698498968a1688af96960b" }
 ```
 
 ## Build
@@ -192,8 +194,10 @@ sui move test
 
 ## Publication status
 
-The permanent Pressing/Listing architecture is published on Testnet at
-`0x95fba53c968978f75d6ca8a5e6f0f3ba83fdc3af301bc8419be354a3990af5b9`.
-`Published.toml` records the publication metadata used by the SDK deployment map.
+This version requires a fresh publication. It is not a compatible upgrade of the
+legacy Testnet package: `miso_record::record::Record` is now key-only and uses
+module-controlled transfer. Previously published package and object IDs do not
+identify this architecture. A new `Published.toml` should be committed only after
+the fresh publication.
 
 License: Apache-2.0
