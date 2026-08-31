@@ -678,7 +678,7 @@ fun buyer_purchase_is_end_to_end_across_transactions() {
     assert_eq!(paid, 8);
     assert_eq!(sold_to, buyer);
 
-    transfer::public_transfer(purchased, buyer);
+    record::transfer(purchased, buyer);
     ts::return_shared(clk);
     ts::return_shared(p);
     ts::return_shared(l);
