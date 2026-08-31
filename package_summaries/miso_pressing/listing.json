@@ -3,7 +3,7 @@
     "address": "miso_pressing",
     "name": "listing"
   },
-  "doc": " One currency's offer on a pressing — a *Listing*.\n\n A listing answers exactly two questions: **what does it cost** and **can you pay\n in this currency**. Everything about *what you get* — the run, the number —\n belongs to the `Pressing`. So a pressing sold in SUI and in USDC has two listings,\n each with its own price and switch, both drawing on the same number sequence.\n\n A listing's UID is derived off its pressing's UID at `ListingKey<Currency>()`, so\n there is exactly one listing per (pressing, currency) — ever — and its address is\n computable from the pressing's alone. The key is *phantom-typed* rather than a\n stored `TypeName`, which makes the currency part of the key's type: distinct\n currencies are distinct key types, so `derived_object::claim` enforces\n once-per-currency by itself and the pressing needs no set of currencies to check\n against. Listings are **permanent**: never destroyed, never replaced. The offer\n changes *in place* — repriced, disabled, re-enabled — and the listing keeps its\n identity through every change.\n\n # Price\n\n `Fixed` (pay exactly) or `Floor` (pay at least; overpayment is kept as a tip, not\n refunded). The whole payment forwards to the release's address. Settable with the\n `PressingAdminCap` (`set_price`) — repricing is an edit, not a teardown — and a\n change cannot catch a buyer out: a `Fixed` buyer pays *exactly*, so a stale\n payment aborts against a new price, and a `Floor` buyer never pays more than the\n balance they sent.\n\n Payment is a `Balance<Currency>`, never a `Coin<Currency>`. A coin is a wrapper an\n object id, an owner, and a wrapping/unwrapping round trip — that this path has no\n use for: the money comes in from wherever the PTB got it (a withdrawal off the\n buyer's accumulator, a `coin::into_balance`, a split of some larger balance) and\n goes straight back out to the release's address via `balance::send_funds`. Taking\n the bare value means `buy` never mints an object just to destroy it, and never\n forces the caller to make one either.\n\n # Two switches\n\n A listing is `Enabled` or `Disabled`; a disabled listing takes no payment in its\n currency, while the pressing's other currencies carry on. Above it, the pressing's\n own `Scheduled → Active → Paused` governs every currency at once\n (`pressing::mint_next`). A sale needs both open.\n\n The **when** lives on the Pressing, not here: its opening time is a fact about the\n release going on sale, not about one payment rail, and a run that opened in SUI at\n Friday 8pm and in USDC at some other time would have two starts and one\n number sequence. So a listing carries no schedule — only whether its currency is\n taken.\n\n # Sale provenance\n\n What the buyer paid is not part of the Record — it is a fact about the *sale*.\n `RecordSoldEvent` snapshots the accepted `Price`, actual payment, buyer, and clock\n timestamp. The Record creation event separately records the authorized witness,\n parent, and number, so provenance remains explicit without changing Record's\n universal object schema.",
+  "doc": " One currency's offer on a pressing — a *Listing*.\n\n A listing answers exactly two questions: **what does it cost** and **can you pay\n in this currency**. Everything about *what you get* — the run, the number —\n belongs to the `Pressing`. So a pressing sold in SUI and in USDC has two listings,\n each with its own price and switch, both drawing on the same number sequence.\n\n A listing's UID is derived off its pressing's UID at `ListingKey<Currency>()`, so\n there is exactly one listing per (pressing, currency) — ever — and its address is\n computable from the pressing's alone. The key is *phantom-typed* rather than a\n stored `TypeName`, which makes the currency part of the key's type: distinct\n currencies are distinct key types, so `derived_object::claim` enforces\n once-per-currency by itself and the pressing needs no set of currencies to check\n against. Listings are **permanent**: never destroyed, never replaced. The offer\n changes *in place* — repriced, disabled, re-enabled — and the listing keeps its\n identity through every change.\n\n # Price\n\n `Fixed` (pay exactly) or `Floor` (pay at least; overpayment is kept as a tip, not\n refunded). The whole payment forwards to the release's address. Settable with the\n `PressingAdminCap` (`set_price`) — repricing is an edit, not a teardown — and a\n change cannot catch a buyer out: a `Fixed` buyer pays *exactly*, so a stale\n payment aborts against a new price, and a `Floor` buyer never pays more than the\n balance they sent.\n\n Payment is a `Balance<Currency>`, never a `Coin<Currency>`. A coin is a wrapper an\n object id, an owner, and a wrapping/unwrapping round trip — that this path has no\n use for: the money comes in from wherever the PTB got it (a withdrawal off the\n buyer's accumulator, a `coin::into_balance`, a split of some larger balance) and\n goes straight back out to the release's address via `balance::send_funds`. Taking\n the bare value means `buy` never mints an object just to destroy it, and never\n forces the caller to make one either.\n\n # Two switches\n\n A listing is `Enabled` or `Disabled`; a disabled listing takes no payment in its\n currency, while the pressing's other currencies carry on. Above it, the pressing's\n own `Scheduled → Active → Paused` governs every currency at once\n (`pressing::mint_next`). A sale needs both open.\n\n The **when** lives on the Pressing, not here: its opening time is a fact about the\n release going on sale, not about one payment rail, and a run that opened in SUI at\n Friday 8pm and in USDC at some other time would have two starts and one\n number sequence. So a listing carries no schedule — only whether its currency is\n taken.\n\n # Sale provenance\n\n The Record stores its purchase currency, buyer, and creation time. The sale event\n additionally snapshots the accepted `Price` and actual payment, which remain facts\n about this offer rather than universal Record fields.",
   "immediate_dependencies": [
     {
       "address": "miso_pressing",
@@ -228,7 +228,7 @@
     "buy": {
       "source_index": 5,
       "index": 5,
-      "doc": " Buy one record: pay this listing's price, take the next number out of the pressing.\n\n `payment` is a bare `Balance<Currency>` and must satisfy the price (exactly, for\n `Fixed`; at least, for `Floor`). The ENTIRE payment forwards to the release's\n address — under `Floor`, anything above the floor is kept as a tip, not refunded.\n The record's number is the pressing's next 1-based value, shared with every other\n currency selling the same run, and its UID is derived off the pressing. `settings`\n must authorize this package's `MintWitness`.\n\n Both switches must be open: this listing `Enabled`, checked here, and the run\n selling at this moment, checked in `pressing::mint_next`.",
+      "doc": " Buy one record: pay this listing's price, take the next number out of the pressing.\n\n `payment` is a bare `Balance<Currency>` and must satisfy the price (exactly, for\n `Fixed`; at least, for `Floor`). The ENTIRE payment forwards to the release's\n address — under `Floor`, anything above the floor is kept as a tip, not refunded.\n The singleton `registry` allocates the next 1-based number for this release across\n every currency and any future sales-package replacement. `settings` must authorize\n this package's `MintWitness`.\n\n Both switches must be open: this listing `Enabled`, checked here, and the run\n selling at this moment, checked in `pressing::mint_next`.",
       "attributes": [
         {
           "Parameterized": [
@@ -294,6 +294,24 @@
                     "name": "pressing"
                   },
                   "name": "Pressing",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "registry",
+          "type_": {
+            "Reference": [
+              true,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso_record",
+                    "name": "record"
+                  },
+                  "name": "RecordRegistry",
                   "type_arguments": []
                 }
               }

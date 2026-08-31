@@ -1,9 +1,10 @@
 # miso-pressing redesign — one pressing, one uncapped run, no editions
 
-> **2026-08-31 — current direction.** Record is again Miso's concrete distribution
-> format. The package now uses shared `miso_record::Settings` and a module-controlled
-> `pressing::MintWitness`; the generic `Record<Certificate>` layer and Pressing
-> certificate have been removed. Pressing remains the UID derivation parent. The
+> **2026-09-01 — current direction.** Record is Miso's concrete distribution format.
+> The package uses shared `miso_record::Settings`, one module-controlled
+> `pressing::MintWitness`, and the singleton `RecordRegistry`. The Registry is the UID
+> derivation parent at `RecordKey(release_id, number)` and owns the canonical
+> per-release sequences; Pressing owns only sale state and a local sales count. The
 > historical exploration below is retained for context; current source, tests, README,
 > and audit are authoritative.
 

@@ -73,11 +73,11 @@ deps = { bps = "bps", miso_share = "miso_share", std = "MoveStdlib", sui = "Sui"
 [pinned.testnet.miso_pressing]
 source = { root = true }
 use_environment = "testnet"
-manifest_digest = "E2744522A6528D8E1FB603BF4BBE15CDE9286B8F92C2DC32782CB705CABB5A5C"
+manifest_digest = "29D67ACA1C6C3094764B3C835665F77AF33008834837CFD520727AFC40A622D3"
 deps = { miso = "miso", miso_record = "miso_record", std = "MoveStdlib", sui = "Sui" }
 
 [pinned.testnet.miso_record]
-source = { git = "https://github.com/misofm/record.git", subdir = ".", rev = "a235ffd41e8d2b1e76e1c7bba292e5ee11074e5b" }
+source = { git = "https://github.com/misofm/record.git", subdir = ".", rev = "c3f5310e0f52b1aa5553636c7f8edae7d01d0010" }
 use_environment = "testnet"
 manifest_digest = "5745706258F61D6CE210904B3E6AE87A73CE9D31A6F93BE4718C442529332A87"
 deps = { std = "MoveStdlib", sui = "Sui" }

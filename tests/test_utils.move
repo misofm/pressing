@@ -6,6 +6,7 @@ module miso_pressing::test_utils;
 
 use miso::release::{Self, Release, ReleaseAdminCap};
 use miso_pressing::pressing::MintWitness;
+use miso_record::record::{Self, RecordRegistry};
 use miso_record::settings::{Self, Settings, SettingsAdminCap};
 use sui::clock::{Self, Clock};
 
@@ -29,6 +30,10 @@ public fun a_release(ctx: &mut TxContext): (Release, ReleaseAdminCap) {
 /// Fresh Record settings with this package's mint witness authorized.
 public fun authorized_settings(ctx: &mut TxContext): (Settings, SettingsAdminCap) {
     let (mut settings, admin_cap) = settings::new_for_testing(ctx);
-    settings.authorize<MintWitness>(&admin_cap);
+    settings.set_witness<MintWitness>(&admin_cap);
     (settings, admin_cap)
+}
+
+public fun record_registry(ctx: &mut TxContext): RecordRegistry {
+    record::new_registry_for_testing(ctx)
 }

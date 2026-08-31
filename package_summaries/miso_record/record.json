@@ -3,7 +3,7 @@
     "address": "miso_record",
     "name": "record"
   },
-  "doc": " The Miso Record — an owned copy of a release created by an authorized Miso\n distribution mechanism.\n\n `Record` is the distribution format, not a generic substrate for third-party\n record-like objects. Its creation boundary is therefore governed by\n `miso_record::settings::Settings`: a caller must consume a witness whose type the Miso\n admin has authorized. Distribution packages can evolve independently while every\n object accepted as a `Record` still shares one creation policy.\n\n Every Record is derived from its distribution parent and a claim number. This\n makes its address predictable and prevents a claim number from being reused for\n the same parent. The number remains distribution context rather than Record data.\n\n `Record` is key-only. This module exposes address transfer, but deliberately\n exposes no sharing or freezing path and cannot be bypassed through the framework's\n `public_*` transfer APIs.",
+  "doc": " The Miso Record — an owned copy of a release created by an authorized Miso\n distribution mechanism.\n\n `Record` is the distribution format, not a generic substrate for third-party\n record-like objects. Its creation boundary is therefore governed by\n `miso_record::settings::Settings`: a caller must consume a witness whose type the Miso\n admin has authorized. Distribution packages can evolve independently while every\n object accepted as a `Record` still shares one creation policy.\n\n A singleton `RecordRegistry` owns the canonical per-release number sequences and\n UID namespace. Sales packages may be replaced without restarting or redefining\n those sequences: an authorized witness chooses *how* a purchase is validated,\n while the Registry alone chooses *which* Record number is created.\n\n `Record` has `key + store`, making it a freely composable Sui asset. Callers use\n the framework's `public_*` ownership APIs directly to transfer, wrap, share, or\n freeze it; this module does not duplicate those operations with convenience\n wrappers.",
   "immediate_dependencies": [
     {
       "address": "miso_record",
@@ -12,6 +12,10 @@
     {
       "address": "std",
       "name": "type_name"
+    },
+    {
+      "address": "sui",
+      "name": "clock"
     },
     {
       "address": "sui",
@@ -27,15 +31,94 @@
     },
     {
       "address": "sui",
+      "name": "table"
+    },
+    {
+      "address": "sui",
       "name": "transfer"
+    },
+    {
+      "address": "sui",
+      "name": "tx_context"
     }
   ],
   "attributes": [],
   "functions": {
-    "mint": {
+    "init": {
       "source_index": 0,
       "index": 0,
-      "doc": " Create a Record by consuming an authorized distribution witness.\n\n The Record UID is derived from `parent` and `number`; a pair can be claimed only\n once. `settings` is read immutably so unrelated distributions do not contend on\n the shared Settings object.",
+      "doc": null,
+      "attributes": [],
+      "visibility": "Private",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "ctx",
+          "type_": {
+            "Reference": [
+              true,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "sui",
+                    "name": "tx_context"
+                  },
+                  "name": "TxContext",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": []
+    },
+    "new_registry": {
+      "source_index": 1,
+      "index": 1,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Private",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "ctx",
+          "type_": {
+            "Reference": [
+              true,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "sui",
+                    "name": "tx_context"
+                  },
+                  "name": "TxContext",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        {
+          "Datatype": {
+            "module": {
+              "address": "miso_record",
+              "name": "record"
+            },
+            "name": "RecordRegistry",
+            "type_arguments": []
+          }
+        }
+      ]
+    },
+    "mint": {
+      "source_index": 2,
+      "index": 2,
+      "doc": " Create a Record by consuming an authorized distribution witness.\n\n The Registry advances the release's sequence and derives the Record UID from\n `(release_id, number)`. `settings` is read immutably; the Registry is the one\n deliberately mutable shared input that serializes Record creation across every\n sales implementation.",
       "attributes": [],
       "visibility": "Public",
       "entry": false,
@@ -45,21 +128,25 @@
           "constraints": [
             "Drop"
           ]
+        },
+        {
+          "name": "Currency",
+          "constraints": []
         }
       ],
       "parameters": [
         {
-          "name": "parent",
+          "name": "registry",
           "type_": {
             "Reference": [
               true,
               {
                 "Datatype": {
                   "module": {
-                    "address": "sui",
-                    "name": "object"
+                    "address": "miso_record",
+                    "name": "record"
                   },
-                  "name": "UID",
+                  "name": "RecordRegistry",
                   "type_arguments": []
                 }
               }
@@ -104,8 +191,40 @@
           }
         },
         {
-          "name": "number",
-          "type_": "u64"
+          "name": "clock",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "sui",
+                    "name": "clock"
+                  },
+                  "name": "Clock",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "ctx",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "sui",
+                    "name": "tx_context"
+                  },
+                  "name": "TxContext",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
         }
       ],
       "return_": [
@@ -121,38 +240,9 @@
         }
       ]
     },
-    "transfer": {
-      "source_index": 1,
-      "index": 1,
-      "doc": " Transfer a Record to `recipient`.",
-      "attributes": [],
-      "visibility": "Public",
-      "entry": false,
-      "type_parameters": [],
-      "parameters": [
-        {
-          "name": "record",
-          "type_": {
-            "Datatype": {
-              "module": {
-                "address": "miso_record",
-                "name": "record"
-              },
-              "name": "Record",
-              "type_arguments": []
-            }
-          }
-        },
-        {
-          "name": "recipient",
-          "type_": "address"
-        }
-      ],
-      "return_": []
-    },
     "destroy": {
-      "source_index": 2,
-      "index": 2,
+      "source_index": 3,
+      "index": 3,
       "doc": " Destroy a Record. Detach any dynamic-field extensions first or they become\n inaccessible.",
       "attributes": [],
       "visibility": "Public",
@@ -176,8 +266,8 @@
       "return_": []
     },
     "uid": {
-      "source_index": 3,
-      "index": 3,
+      "source_index": 4,
+      "index": 4,
       "doc": null,
       "attributes": [],
       "visibility": "Public",
@@ -222,8 +312,8 @@
       ]
     },
     "uid_mut": {
-      "source_index": 4,
-      "index": 4,
+      "source_index": 5,
+      "index": 5,
       "doc": null,
       "attributes": [],
       "visibility": "Public",
@@ -268,8 +358,8 @@
       ]
     },
     "release_id": {
-      "source_index": 5,
-      "index": 5,
+      "source_index": 6,
+      "index": 6,
       "doc": null,
       "attributes": [],
       "visibility": "Public",
@@ -308,9 +398,9 @@
         }
       ]
     },
-    "derive_address": {
-      "source_index": 6,
-      "index": 6,
+    "registry_id": {
+      "source_index": 7,
+      "index": 7,
       "doc": null,
       "attributes": [],
       "visibility": "Public",
@@ -318,7 +408,243 @@
       "type_parameters": [],
       "parameters": [
         {
-          "name": "parent",
+          "name": "self",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso_record",
+                    "name": "record"
+                  },
+                  "name": "Record",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        {
+          "Datatype": {
+            "module": {
+              "address": "sui",
+              "name": "object"
+            },
+            "name": "ID",
+            "type_arguments": []
+          }
+        }
+      ]
+    },
+    "number": {
+      "source_index": 8,
+      "index": 8,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "self",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso_record",
+                    "name": "record"
+                  },
+                  "name": "Record",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        "u64"
+      ]
+    },
+    "created_at_ms": {
+      "source_index": 9,
+      "index": 9,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "self",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso_record",
+                    "name": "record"
+                  },
+                  "name": "Record",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        "u64"
+      ]
+    },
+    "purchase_currency": {
+      "source_index": 10,
+      "index": 10,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "self",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso_record",
+                    "name": "record"
+                  },
+                  "name": "Record",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        {
+          "Datatype": {
+            "module": {
+              "address": "std",
+              "name": "type_name"
+            },
+            "name": "TypeName",
+            "type_arguments": []
+          }
+        }
+      ]
+    },
+    "purchased_by": {
+      "source_index": 11,
+      "index": 11,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "self",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso_record",
+                    "name": "record"
+                  },
+                  "name": "Record",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        "address"
+      ]
+    },
+    "supply": {
+      "source_index": 12,
+      "index": 12,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "self",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso_record",
+                    "name": "record"
+                  },
+                  "name": "RecordRegistry",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "release_id",
+          "type_": {
+            "Datatype": {
+              "module": {
+                "address": "sui",
+                "name": "object"
+              },
+              "name": "ID",
+              "type_arguments": []
+            }
+          }
+        }
+      ],
+      "return_": [
+        "u64"
+      ]
+    },
+    "derive_address": {
+      "source_index": 13,
+      "index": 13,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "registry_id",
+          "type_": {
+            "Datatype": {
+              "module": {
+                "address": "sui",
+                "name": "object"
+              },
+              "name": "ID",
+              "type_arguments": []
+            }
+          }
+        },
+        {
+          "name": "release_id",
           "type_": {
             "Datatype": {
               "module": {
@@ -346,7 +672,8 @@
       "doc": null,
       "attributes": [],
       "abilities": [
-        "Key"
+        "Key",
+        "Store"
       ],
       "type_parameters": [],
       "fields": {
@@ -379,13 +706,116 @@
                 "type_arguments": []
               }
             }
+          },
+          "registry_id": {
+            "index": 2,
+            "doc": " The canonical Registry whose UID namespace created this Record.",
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "sui",
+                  "name": "object"
+                },
+                "name": "ID",
+                "type_arguments": []
+              }
+            }
+          },
+          "number": {
+            "index": 3,
+            "doc": " This Record's Registry-allocated number within its release.",
+            "type_": "u64"
+          },
+          "created_at_ms": {
+            "index": 4,
+            "doc": " When this Record was created, in Unix milliseconds from Sui's Clock.",
+            "type_": "u64"
+          },
+          "purchase_currency": {
+            "index": 5,
+            "doc": " The currency type used for the purchase that created this Record.",
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "std",
+                  "name": "type_name"
+                },
+                "name": "TypeName",
+                "type_arguments": []
+              }
+            }
+          },
+          "purchased_by": {
+            "index": 6,
+            "doc": " The transaction sender who purchased this Record.",
+            "type_": "address"
+          }
+        }
+      }
+    },
+    "RecordRegistry": {
+      "index": 1,
+      "doc": " The singleton namespace and per-release counters for every Record created by this\n package.\n Only `mint` mutates it.",
+      "attributes": [],
+      "abilities": [
+        "Key"
+      ],
+      "type_parameters": [],
+      "fields": {
+        "positional_fields": false,
+        "fields": {
+          "id": {
+            "index": 0,
+            "doc": null,
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "sui",
+                  "name": "object"
+                },
+                "name": "UID",
+                "type_arguments": []
+              }
+            }
+          },
+          "supplies": {
+            "index": 1,
+            "doc": null,
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "sui",
+                  "name": "table"
+                },
+                "name": "Table",
+                "type_arguments": [
+                  {
+                    "phantom": true,
+                    "argument": {
+                      "Datatype": {
+                        "module": {
+                          "address": "sui",
+                          "name": "object"
+                        },
+                        "name": "ID",
+                        "type_arguments": []
+                      }
+                    }
+                  },
+                  {
+                    "phantom": true,
+                    "argument": "u64"
+                  }
+                ]
+              }
+            }
           }
         }
       }
     },
     "RecordKey": {
-      "index": 1,
-      "doc": " Key for deriving a Record UID from its distribution parent. The positional field\n is module-private, so only this module can claim this key namespace.",
+      "index": 2,
+      "doc": " Key for deriving a Record UID from the Registry. The positional field is\n module-private, so only this module can claim this key namespace.",
       "attributes": [],
       "abilities": [
         "Copy",
@@ -399,13 +829,27 @@
           "pos0": {
             "index": 0,
             "doc": null,
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "sui",
+                  "name": "object"
+                },
+                "name": "ID",
+                "type_arguments": []
+              }
+            }
+          },
+          "pos1": {
+            "index": 1,
+            "doc": null,
             "type_": "u64"
           }
         }
       }
     },
     "RecordCreatedEvent": {
-      "index": 2,
+      "index": 3,
       "doc": null,
       "attributes": [],
       "abilities": [
@@ -430,7 +874,7 @@
               }
             }
           },
-          "parent_id": {
+          "registry_id": {
             "index": 1,
             "doc": null,
             "type_": {
@@ -463,8 +907,32 @@
             "doc": null,
             "type_": "u64"
           },
-          "witness": {
+          "created_at_ms": {
             "index": 4,
+            "doc": null,
+            "type_": "u64"
+          },
+          "purchase_currency": {
+            "index": 5,
+            "doc": null,
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "std",
+                  "name": "type_name"
+                },
+                "name": "TypeName",
+                "type_arguments": []
+              }
+            }
+          },
+          "purchased_by": {
+            "index": 6,
+            "doc": null,
+            "type_": "address"
+          },
+          "witness": {
+            "index": 7,
             "doc": null,
             "type_": {
               "Datatype": {
@@ -480,8 +948,37 @@
         }
       }
     },
+    "RecordRegistryCreatedEvent": {
+      "index": 4,
+      "doc": null,
+      "attributes": [],
+      "abilities": [
+        "Copy",
+        "Drop"
+      ],
+      "type_parameters": [],
+      "fields": {
+        "positional_fields": false,
+        "fields": {
+          "registry_id": {
+            "index": 0,
+            "doc": null,
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "sui",
+                  "name": "object"
+                },
+                "name": "ID",
+                "type_arguments": []
+              }
+            }
+          }
+        }
+      }
+    },
     "RecordDestroyedEvent": {
-      "index": 3,
+      "index": 5,
       "doc": null,
       "attributes": [],
       "abilities": [

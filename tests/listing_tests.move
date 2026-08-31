@@ -7,8 +7,8 @@ module miso_pressing::listing_tests;
 use miso::release::{Self, Release};
 use miso_pressing::listing::{Self, Listing};
 use miso_pressing::pressing::{Self, Pressing, PressingAdminCap};
-use miso_pressing::test_utils::{a_release, authorized_settings, id, USDX};
-use miso_record::record::{Self, Record};
+use miso_pressing::test_utils::{a_release, authorized_settings, id, record_registry, USDX};
+use miso_record::record::{Self, Record, RecordRegistry};
 use miso_record::settings;
 use std::type_name;
 use std::unit_test::{assert_eq, destroy};
@@ -44,12 +44,13 @@ fun a_listing_for<Currency>(
 fun buy<Currency>(
     listing: &mut Listing<Currency>,
     pressing: &mut Pressing,
+    registry: &mut RecordRegistry,
     payment: Balance<Currency>,
     clock: &Clock,
     ctx: &mut TxContext,
 ): Record {
     let (settings, settings_admin) = authorized_settings(ctx);
-    let record = listing.buy(pressing, payment, &settings, clock, ctx);
+    let record = listing.buy(pressing, registry, payment, &settings, clock, ctx);
     destroy(settings);
     destroy(settings_admin);
     record
@@ -60,6 +61,8 @@ fun buy<Currency>(
 #[test]
 fun buy_presses_a_record_at_the_next_derived_address() {
     let mut ctx = tx_context::new_from_hint(@0xA, 0, 0, 0, 0);
+    let mut registry = record_registry(&mut ctx);
+    let registry_id = object::id(&registry);
     let clk = clock::create_for_testing(&mut ctx);
 
     // Floor of 5; the buyer pays 8 — a 3-over tip, kept, not refunded.
@@ -74,21 +77,33 @@ fun buy_presses_a_record_at_the_next_derived_address() {
     assert_eq!(l.state(), listing::new_enabled_state());
     assert_eq!(l.price().amount(), 5);
 
-    let r = buy(&mut l, &mut p, balance::create_for_testing<SUI>(8), &clk, &mut ctx);
+    let r = buy(
+        &mut l,
+        &mut p,
+        &mut registry,
+        balance::create_for_testing<SUI>(8),
+        &clk,
+        &mut ctx,
+    );
 
-    assert_eq!(record::derive_address(pressing_id, 1).to_id(), object::id(&r));
+    assert_eq!(
+        record::derive_address(registry_id, id(@0xBEEF), 1).to_id(),
+        object::id(&r),
+    );
     assert_eq!(r.release_id(), id(@0xBEEF));
     assert_eq!(p.supply(), 1);
 
     record::destroy(r);
     l.destroy_for_testing();
     p.destroy_for_testing(admin);
+    destroy(registry);
     clk.destroy_for_testing();
 }
 
 #[test]
 fun sale_event_captures_the_accepted_offer_and_result() {
     let mut ctx = tx_context::new_from_hint(@0xA, 0, 0, 0, 0);
+    let mut registry = record_registry(&mut ctx);
     let clk = clock::create_for_testing(&mut ctx);
     let release_id = id(@0xBEEF);
     let (mut p, admin, mut l) = a_listing_for<SUI>(
@@ -100,7 +115,14 @@ fun sale_event_captures_the_accepted_offer_and_result() {
     let pressing_id = object::id(&p);
     let listing_id = object::id(&l);
 
-    let record = buy(&mut l, &mut p, balance::create_for_testing<SUI>(8), &clk, &mut ctx);
+    let record = buy(
+        &mut l,
+        &mut p,
+        &mut registry,
+        balance::create_for_testing<SUI>(8),
+        &clk,
+        &mut ctx,
+    );
 
     let sold = event::events_by_type<listing::RecordSoldEvent<SUI>>();
     assert_eq!(sold.length(), 1);
@@ -128,12 +150,14 @@ fun sale_event_captures_the_accepted_offer_and_result() {
     record::destroy(record);
     l.destroy_for_testing();
     p.destroy_for_testing(admin);
+    destroy(registry);
     clk.destroy_for_testing();
 }
 
 #[test, expected_failure(abort_code = record::ENotAuthorized, location = record)]
 fun buy_rejects_settings_that_do_not_authorize_the_pressing_witness() {
     let mut ctx = tx_context::new_from_hint(@0xA, 0, 0, 0, 0);
+    let mut registry = record_registry(&mut ctx);
     let (cfg, settings_admin) = settings::new_for_testing(&mut ctx);
     let clk = clock::create_for_testing(&mut ctx);
     let (mut p, admin, mut l) = a_listing<SUI>(
@@ -142,19 +166,21 @@ fun buy_rejects_settings_that_do_not_authorize_the_pressing_witness() {
         &mut ctx,
     );
 
-    let r = l.buy(&mut p, balance::zero<SUI>(), &cfg, &clk, &ctx);
+    let r = l.buy(&mut p, &mut registry, balance::zero<SUI>(), &cfg, &clk, &ctx);
 
     record::destroy(r);
     l.destroy_for_testing();
     p.destroy_for_testing(admin);
     destroy(cfg);
     destroy(settings_admin);
+    destroy(registry);
     clk.destroy_for_testing();
 }
 
 #[test, expected_failure(abort_code = listing::EInsufficientPayment, location = listing)]
 fun buy_aborts_on_underpayment() {
     let mut ctx = tx_context::new_from_hint(@0xA, 0, 0, 0, 0);
+    let mut registry = record_registry(&mut ctx);
     let clk = clock::create_for_testing(&mut ctx);
     let (mut p, admin, mut l) = a_listing<SUI>(
         listing::new_fixed_price(10),
@@ -162,17 +188,26 @@ fun buy_aborts_on_underpayment() {
         &mut ctx,
     );
 
-    let r = buy(&mut l, &mut p, balance::create_for_testing<SUI>(9), &clk, &mut ctx);
+    let r = buy(
+        &mut l,
+        &mut p,
+        &mut registry,
+        balance::create_for_testing<SUI>(9),
+        &clk,
+        &mut ctx,
+    );
 
     record::destroy(r);
     l.destroy_for_testing();
     p.destroy_for_testing(admin);
+    destroy(registry);
     clk.destroy_for_testing();
 }
 
 #[test, expected_failure(abort_code = listing::EInsufficientPayment, location = listing)]
 fun a_fixed_price_rejects_overpayment_too() {
     let mut ctx = tx_context::new_from_hint(@0xA, 0, 0, 0, 0);
+    let mut registry = record_registry(&mut ctx);
     let clk = clock::create_for_testing(&mut ctx);
     let (mut p, admin, mut l) = a_listing<SUI>(
         listing::new_fixed_price(10),
@@ -181,17 +216,26 @@ fun a_fixed_price_rejects_overpayment_too() {
     );
 
     // Fixed means exactly — a tip needs a Floor price.
-    let r = buy(&mut l, &mut p, balance::create_for_testing<SUI>(11), &clk, &mut ctx);
+    let r = buy(
+        &mut l,
+        &mut p,
+        &mut registry,
+        balance::create_for_testing<SUI>(11),
+        &clk,
+        &mut ctx,
+    );
 
     record::destroy(r);
     l.destroy_for_testing();
     p.destroy_for_testing(admin);
+    destroy(registry);
     clk.destroy_for_testing();
 }
 
 #[test, expected_failure(abort_code = listing::EWrongPressing, location = listing)]
 fun buy_aborts_with_a_pressing_this_listing_does_not_sell_from() {
     let mut ctx = tx_context::new_from_hint(@0xA, 0, 0, 0, 0);
+    let mut registry = record_registry(&mut ctx);
     let clk = clock::create_for_testing(&mut ctx);
     let (p, admin, mut l) = a_listing<SUI>(
         listing::new_fixed_price(0),
@@ -202,18 +246,20 @@ fun buy_aborts_with_a_pressing_this_listing_does_not_sell_from() {
     // A different pressing entirely — it must not be possible to draw its numbers down.
     let (mut other, other_admin) = pressing::new_for_testing(id(@0xBEEF), &mut ctx);
     assert!(!l.is_live(&other, &clk));
-    let r = buy(&mut l, &mut other, balance::zero<SUI>(), &clk, &mut ctx);
+    let r = buy(&mut l, &mut other, &mut registry, balance::zero<SUI>(), &clk, &mut ctx);
 
     record::destroy(r);
     other.destroy_for_testing(other_admin);
     l.destroy_for_testing();
     p.destroy_for_testing(admin);
+    destroy(registry);
     clk.destroy_for_testing();
 }
 
 #[test, expected_failure(abort_code = listing::EInsufficientPayment, location = listing)]
 fun a_floor_price_rejects_underpayment() {
     let mut ctx = tx_context::new_from_hint(@0xA, 0, 0, 0, 0);
+    let mut registry = record_registry(&mut ctx);
     let clk = clock::create_for_testing(&mut ctx);
     let (mut p, admin, mut l) = a_listing<SUI>(
         listing::new_floor_price(10),
@@ -221,11 +267,19 @@ fun a_floor_price_rejects_underpayment() {
         &mut ctx,
     );
 
-    let r = buy(&mut l, &mut p, balance::create_for_testing<SUI>(9), &clk, &mut ctx);
+    let r = buy(
+        &mut l,
+        &mut p,
+        &mut registry,
+        balance::create_for_testing<SUI>(9),
+        &clk,
+        &mut ctx,
+    );
 
     record::destroy(r);
     l.destroy_for_testing();
     p.destroy_for_testing(admin);
+    destroy(registry);
     clk.destroy_for_testing();
 }
 
@@ -234,6 +288,7 @@ fun a_floor_price_rejects_underpayment() {
 #[test, expected_failure(abort_code = listing::EListingDisabled, location = listing)]
 fun a_disabled_listing_takes_no_payment() {
     let mut ctx = tx_context::new_from_hint(@0xA, 0, 0, 0, 0);
+    let mut registry = record_registry(&mut ctx);
     let clk = clock::create_for_testing(&mut ctx);
     let (mut p, admin, mut l) = a_listing<SUI>(
         listing::new_fixed_price(0),
@@ -241,17 +296,19 @@ fun a_disabled_listing_takes_no_payment() {
         &mut ctx,
     );
 
-    let r = buy(&mut l, &mut p, balance::zero<SUI>(), &clk, &mut ctx);
+    let r = buy(&mut l, &mut p, &mut registry, balance::zero<SUI>(), &clk, &mut ctx);
 
     record::destroy(r);
     l.destroy_for_testing();
     p.destroy_for_testing(admin);
+    destroy(registry);
     clk.destroy_for_testing();
 }
 
 #[test, expected_failure(abort_code = pressing::EPressingPaused, location = pressing)]
 fun a_paused_pressing_beats_an_enabled_listing() {
     let mut ctx = tx_context::new_from_hint(@0xA, 0, 0, 0, 0);
+    let mut registry = record_registry(&mut ctx);
     let clk = clock::create_for_testing(&mut ctx);
     let (mut p, admin, mut l) = a_listing<SUI>(
         listing::new_fixed_price(0),
@@ -262,17 +319,19 @@ fun a_paused_pressing_beats_an_enabled_listing() {
     // The run-wide switch wins: the listing is open, the pressing is not.
     p.set_state(&admin, pressing::new_paused_state());
     assert!(!l.is_live(&p, &clk));
-    let r = buy(&mut l, &mut p, balance::zero<SUI>(), &clk, &mut ctx);
+    let r = buy(&mut l, &mut p, &mut registry, balance::zero<SUI>(), &clk, &mut ctx);
 
     record::destroy(r);
     l.destroy_for_testing();
     p.destroy_for_testing(admin);
+    destroy(registry);
     clk.destroy_for_testing();
 }
 
 #[test, expected_failure(abort_code = pressing::ENotStarted, location = pressing)]
 fun an_enabled_listing_sells_nothing_before_the_scheduled_start() {
     let mut ctx = tx_context::new_from_hint(@0xA, 0, 0, 0, 0);
+    let mut registry = record_registry(&mut ctx);
     let mut clk = clock::create_for_testing(&mut ctx);
     clk.set_for_testing(50);
     let (mut p, admin, mut l) = a_listing<SUI>(
@@ -284,17 +343,19 @@ fun an_enabled_listing_sells_nothing_before_the_scheduled_start() {
     // The start is scheduled run-wide, so listing a currency early does not open it.
     p.set_state(&admin, pressing::new_scheduled_state(100));
     assert!(!l.is_live(&p, &clk));
-    let r = buy(&mut l, &mut p, balance::zero<SUI>(), &clk, &mut ctx);
+    let r = buy(&mut l, &mut p, &mut registry, balance::zero<SUI>(), &clk, &mut ctx);
 
     record::destroy(r);
     l.destroy_for_testing();
     p.destroy_for_testing(admin);
+    destroy(registry);
     clk.destroy_for_testing();
 }
 
 #[test]
 fun the_scheduled_start_opens_every_currency_at_once() {
     let mut ctx = tx_context::new_from_hint(@0xA, 0, 0, 0, 0);
+    let mut registry = record_registry(&mut ctx);
     let mut clk = clock::create_for_testing(&mut ctx);
     clk.set_for_testing(150);
     let (mut p, admin) = pressing::new_for_testing(id(@0xBEEF), &mut ctx);
@@ -319,7 +380,14 @@ fun the_scheduled_start_opens_every_currency_at_once() {
     assert!(sui_l.is_live(&p, &clk));
     assert!(usdx_l.is_live(&p, &clk));
 
-    let r = buy(&mut sui_l, &mut p, balance::zero<SUI>(), &clk, &mut ctx);
+    let r = buy(
+        &mut sui_l,
+        &mut p,
+        &mut registry,
+        balance::zero<SUI>(),
+        &clk,
+        &mut ctx,
+    );
     assert_eq!(p.supply(), 1);
 
     // The first buy settled the run for everyone — the other rail sees `Active`, not a
@@ -331,12 +399,14 @@ fun the_scheduled_start_opens_every_currency_at_once() {
     sui_l.destroy_for_testing();
     usdx_l.destroy_for_testing();
     p.destroy_for_testing(admin);
+    destroy(registry);
     clk.destroy_for_testing();
 }
 
 #[test]
 fun set_state_flips_one_currency_without_touching_the_others() {
     let mut ctx = tx_context::new_from_hint(@0xA, 0, 0, 0, 0);
+    let mut registry = record_registry(&mut ctx);
     let clk = clock::create_for_testing(&mut ctx);
     let (mut p, admin, mut l) = a_listing<SUI>(
         listing::new_fixed_price(0),
@@ -354,12 +424,13 @@ fun set_state_flips_one_currency_without_touching_the_others() {
 
     l.set_state(&admin, listing::new_enabled_state());
     assert!(l.is_enabled_for_testing());
-    let r = buy(&mut l, &mut p, balance::zero<SUI>(), &clk, &mut ctx);
+    let r = buy(&mut l, &mut p, &mut registry, balance::zero<SUI>(), &clk, &mut ctx);
     assert_eq!(p.supply(), 1);
 
     record::destroy(r);
     l.destroy_for_testing();
     p.destroy_for_testing(admin);
+    destroy(registry);
     clk.destroy_for_testing();
 }
 
@@ -385,6 +456,8 @@ fun set_state_aborts_with_a_cap_for_another_pressing() {
 #[test]
 fun set_price_reprices_the_standing_listing() {
     let mut ctx = tx_context::new_from_hint(@0xA, 0, 0, 0, 0);
+    let mut registry = record_registry(&mut ctx);
+    let registry_id = object::id(&registry);
     let clk = clock::create_for_testing(&mut ctx);
     let (mut p, admin, mut l) = a_listing<SUI>(
         listing::new_fixed_price(10),
@@ -393,28 +466,44 @@ fun set_price_reprices_the_standing_listing() {
     );
     let listing_id = object::id(&l);
 
-    let r1 = buy(&mut l, &mut p, balance::create_for_testing<SUI>(10), &clk, &mut ctx);
+    let r1 = buy(
+        &mut l,
+        &mut p,
+        &mut registry,
+        balance::create_for_testing<SUI>(10),
+        &clk,
+        &mut ctx,
+    );
 
     l.set_price(&admin, listing::new_fixed_price(20));
     assert_eq!(l.price().amount(), 20);
-    let r2 = buy(&mut l, &mut p, balance::create_for_testing<SUI>(20), &clk, &mut ctx);
+    let r2 = buy(
+        &mut l,
+        &mut p,
+        &mut registry,
+        balance::create_for_testing<SUI>(20),
+        &clk,
+        &mut ctx,
+    );
 
     // Same listing through the change; each sale gets the next derived Record.
     assert_eq!(object::id(&l), listing_id);
-    assert_eq!(record::derive_address(object::id(&p), 1).to_id(), object::id(&r1));
-    assert_eq!(record::derive_address(object::id(&p), 2).to_id(), object::id(&r2));
+    assert_eq!(record::derive_address(registry_id, id(@0xBEEF), 1).to_id(), object::id(&r1));
+    assert_eq!(record::derive_address(registry_id, id(@0xBEEF), 2).to_id(), object::id(&r2));
     assert_eq!(p.supply(), 2);
 
     record::destroy(r1);
     record::destroy(r2);
     l.destroy_for_testing();
     p.destroy_for_testing(admin);
+    destroy(registry);
     clk.destroy_for_testing();
 }
 
 #[test, expected_failure(abort_code = listing::EInsufficientPayment, location = listing)]
 fun a_stale_payment_aborts_against_a_new_price() {
     let mut ctx = tx_context::new_from_hint(@0xA, 0, 0, 0, 0);
+    let mut registry = record_registry(&mut ctx);
     let clk = clock::create_for_testing(&mut ctx);
     let (mut p, admin, mut l) = a_listing<SUI>(
         listing::new_fixed_price(10),
@@ -425,11 +514,19 @@ fun a_stale_payment_aborts_against_a_new_price() {
     // The artist reprices while a payment for the old fixed price is in flight —
     // Fixed means exactly, so the stale payment is refused, never overcharged.
     l.set_price(&admin, listing::new_fixed_price(20));
-    let r = buy(&mut l, &mut p, balance::create_for_testing<SUI>(10), &clk, &mut ctx);
+    let r = buy(
+        &mut l,
+        &mut p,
+        &mut registry,
+        balance::create_for_testing<SUI>(10),
+        &clk,
+        &mut ctx,
+    );
 
     record::destroy(r);
     l.destroy_for_testing();
     p.destroy_for_testing(admin);
+    destroy(registry);
     clk.destroy_for_testing();
 }
 
@@ -556,6 +653,8 @@ fun a_pressing_cannot_be_listed_twice_in_one_currency() {
 fun one_pressing_sells_in_two_currencies_off_one_number_sequence() {
     let mut sc = ts::begin(@0xA);
     let (cfg, settings_admin) = authorized_settings(sc.ctx());
+    let mut registry = record_registry(sc.ctx());
+    let registry_id = object::id(&registry);
     let clk = clock::create_for_testing(sc.ctx());
     let (mut rel, cap) = a_release(sc.ctx());
     let release_id = object::id(&rel);
@@ -586,6 +685,7 @@ fun one_pressing_sells_in_two_currencies_off_one_number_sequence() {
     // One run, two payment rails: the numbers interleave.
     let r1 = sui_listing.buy(
         &mut p,
+        &mut registry,
         balance::create_for_testing<SUI>(10),
         &cfg,
         &clk,
@@ -593,6 +693,7 @@ fun one_pressing_sells_in_two_currencies_off_one_number_sequence() {
     );
     let r2 = usdx_listing.buy(
         &mut p,
+        &mut registry,
         balance::create_for_testing<USDX>(25),
         &cfg,
         &clk,
@@ -600,15 +701,16 @@ fun one_pressing_sells_in_two_currencies_off_one_number_sequence() {
     );
     let r3 = sui_listing.buy(
         &mut p,
+        &mut registry,
         balance::create_for_testing<SUI>(10),
         &cfg,
         &clk,
         sc.ctx(),
     );
 
-    assert_eq!(record::derive_address(pressing_id, 1).to_id(), object::id(&r1));
-    assert_eq!(record::derive_address(pressing_id, 2).to_id(), object::id(&r2));
-    assert_eq!(record::derive_address(pressing_id, 3).to_id(), object::id(&r3));
+    assert_eq!(record::derive_address(registry_id, release_id, 1).to_id(), object::id(&r1));
+    assert_eq!(record::derive_address(registry_id, release_id, 2).to_id(), object::id(&r2));
+    assert_eq!(record::derive_address(registry_id, release_id, 3).to_id(), object::id(&r3));
     assert_eq!(r1.release_id(), release_id);
     assert_eq!(p.supply(), 3);
 
@@ -622,7 +724,7 @@ fun one_pressing_sells_in_two_currencies_off_one_number_sequence() {
     assert!(!sui_listing.is_live(&p, &clk));
     assert!(!usdx_listing.is_live(&p, &clk));
     assert!(listing::has_listing<SUI>(&p) && listing::has_listing<USDX>(&p));
-    assert_eq!(record::derive_address(pressing_id, 1).to_id(), object::id(&r1));
+    assert_eq!(record::derive_address(registry_id, release_id, 1).to_id(), object::id(&r1));
 
     record::destroy(r1);
     record::destroy(r2);
@@ -634,6 +736,7 @@ fun one_pressing_sells_in_two_currencies_off_one_number_sequence() {
     destroy(cap);
     destroy(admin);
     destroy(cfg);
+    destroy(registry);
     destroy(settings_admin);
     clk.destroy_for_testing();
     sc.end();
@@ -645,6 +748,8 @@ fun buyer_purchase_is_end_to_end_across_transactions() {
     let buyer = @0xB0B;
     let mut sc = ts::begin(seller);
     let (cfg, settings_admin) = authorized_settings(sc.ctx());
+    let mut registry = record_registry(sc.ctx());
+    let registry_id = object::id(&registry);
     let mut clk = clock::create_for_testing(sc.ctx());
     clk.set_for_testing(1_726_000_123);
     let (mut rel, release_cap) = a_release(sc.ctx());
@@ -674,6 +779,7 @@ fun buyer_purchase_is_end_to_end_across_transactions() {
     let clk = sc.take_shared<Clock>();
     let purchased = l.buy(
         &mut p,
+        &mut registry,
         balance::create_for_testing<SUI>(8),
         &cfg,
         &clk,
@@ -681,17 +787,28 @@ fun buyer_purchase_is_end_to_end_across_transactions() {
     );
     let record_id = object::id(&purchased);
     assert_eq!(p.supply(), 1);
-    assert_eq!(record_id, record::derive_address(pressing_id, 1).to_id());
+    assert_eq!(record_id, record::derive_address(registry_id, release_id, 1).to_id());
     assert_eq!(purchased.release_id(), release_id);
 
     let mut created = event::events_by_type<record::RecordCreatedEvent>();
     assert_eq!(created.length(), 1);
-    let (created_record_id, created_parent_id, created_release_id, created_number, witness) =
-        record::record_created_event_fields(created.pop_back());
+    let (
+        created_record_id,
+        created_registry_id,
+        created_release_id,
+        created_number,
+        created_at_ms,
+        purchase_currency,
+        purchased_by,
+        witness,
+    ) = record::record_created_event_fields(created.pop_back());
     assert_eq!(created_record_id, record_id);
-    assert_eq!(created_parent_id, pressing_id);
+    assert_eq!(created_registry_id, registry_id);
     assert_eq!(created_release_id, release_id);
     assert_eq!(created_number, 1);
+    assert_eq!(created_at_ms, 1_726_000_123);
+    assert_eq!(purchase_currency, type_name::with_defining_ids<SUI>());
+    assert_eq!(purchased_by, buyer);
     assert_eq!(witness, type_name::with_defining_ids<pressing::MintWitness>());
 
     let sold = event::events_by_type<listing::RecordSoldEvent<SUI>>();
@@ -717,7 +834,7 @@ fun buyer_purchase_is_end_to_end_across_transactions() {
     assert_eq!(sold_to, buyer);
     assert_eq!(created_at_ms, 1_726_000_123);
 
-    record::transfer(purchased, buyer);
+    transfer::public_transfer(purchased, buyer);
     ts::return_shared(clk);
     ts::return_shared(p);
     ts::return_shared(l);
@@ -757,6 +874,7 @@ fun buyer_purchase_is_end_to_end_across_transactions() {
     destroy(release_cap);
     destroy(cfg);
     destroy(settings_admin);
+    destroy(registry);
     let clk = sc.take_shared<Clock>();
     clk.destroy_for_testing();
     sc.end();

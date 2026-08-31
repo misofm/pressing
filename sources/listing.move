@@ -50,15 +50,13 @@
 ///
 /// # Sale provenance
 ///
-/// What the buyer paid is not part of the Record — it is a fact about the *sale*.
-/// `RecordSoldEvent` snapshots the accepted `Price`, actual payment, buyer, and clock
-/// timestamp. The Record creation event separately records the authorized witness,
-/// parent, and number, so provenance remains explicit without changing Record's
-/// universal object schema.
+/// The Record stores its purchase currency, buyer, and creation time. The sale event
+/// additionally snapshots the accepted `Price` and actual payment, which remain facts
+/// about this offer rather than universal Record fields.
 module miso_pressing::listing;
 
 use miso_pressing::pressing::{Pressing, PressingAdminCap};
-use miso_record::record::Record;
+use miso_record::record::{Record, RecordRegistry};
 use miso_record::settings::Settings;
 use sui::balance::{Self, Balance};
 use sui::clock::Clock;
@@ -225,9 +223,9 @@ public fun new<Currency>(
 /// `payment` is a bare `Balance<Currency>` and must satisfy the price (exactly, for
 /// `Fixed`; at least, for `Floor`). The ENTIRE payment forwards to the release's
 /// address — under `Floor`, anything above the floor is kept as a tip, not refunded.
-/// The record's number is the pressing's next 1-based value, shared with every other
-/// currency selling the same run, and its UID is derived off the pressing. `settings`
-/// must authorize this package's `MintWitness`.
+/// The singleton `registry` allocates the next 1-based number for this release across
+/// every currency and any future sales-package replacement. `settings` must authorize
+/// this package's `MintWitness`.
 ///
 /// Both switches must be open: this listing `Enabled`, checked here, and the run
 /// selling at this moment, checked in `pressing::mint_next`.
@@ -235,6 +233,7 @@ public fun new<Currency>(
 public fun buy<Currency>(
     self: &mut Listing<Currency>,
     pressing: &mut Pressing,
+    registry: &mut RecordRegistry,
     payment: Balance<Currency>,
     settings: &Settings,
     clock: &Clock,
@@ -258,19 +257,18 @@ public fun buy<Currency>(
         payment.destroy_zero();
     };
 
-    // The pressing owns the number and checks the run-wide switch. Read the sender
-    // and clock once so the mint and sale event describe one atomic purchase.
+    // The Registry owns the canonical number; the Pressing checks the run-wide
+    // switch. Read the sender and clock once so both events describe one purchase.
     let purchased_by = ctx.sender();
     let created_at_ms = clock.timestamp_ms();
-    let record = pressing.mint_next(settings, clock);
+    let record = pressing.mint_next<Currency>(registry, settings, clock, ctx);
 
     emit(RecordSoldEvent<Currency> {
         listing_id: self.id.to_inner(),
         pressing_id: self.pressing_id,
         release_id: self.release_id,
         record_id: object::id(&record),
-        // mint_next just advanced the counter to this record's number.
-        number: pressing.supply(),
+        number: record.number(),
         price: self.price,
         paid,
         buyer: purchased_by,

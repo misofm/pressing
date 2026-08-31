@@ -6,14 +6,26 @@ module miso_pressing::pressing_tests;
 
 use miso::release;
 use miso_pressing::pressing::{Self, Pressing};
-use miso_pressing::test_utils::{a_release, authorized_settings, clock_at, id};
-use miso_record::record;
+use miso_pressing::test_utils::{a_release, authorized_settings, clock_at, id, record_registry};
+use miso_record::record::{Self, Record, RecordRegistry};
 use miso_record::settings;
 use std::type_name;
 use std::unit_test::{assert_eq, destroy};
+use sui::clock::Clock;
 use sui::derived_object;
 use sui::event;
+use sui::sui::SUI;
 use sui::test_scenario as ts;
+
+fun mint_next(
+    pressing: &mut Pressing,
+    registry: &mut RecordRegistry,
+    settings: &settings::Settings,
+    clock: &Clock,
+    ctx: &TxContext,
+): Record {
+    pressing.mint_next<SUI>(registry, settings, clock, ctx)
+}
 
 //=== The derivation chain ===
 
@@ -25,8 +37,8 @@ fun new_derives_the_pressing_and_its_cap_off_the_release() {
 
     let (p, admin) = pressing::new(&mut rel, &cap, pressing::new_active_state());
 
-    // Every address in the tree is pure math — the pressing off the release, the cap
-    // off the pressing. No lookup, no registry.
+    // The sale hierarchy is pure math — the pressing off the release and the cap off
+    // the pressing. Record identity uses the separate Registry.
     assert_eq!(object::id(&p), pressing::derive_id(release_id));
     assert_eq!(object::id(&admin), pressing::derive_admin_cap_id(object::id(&p)));
     assert_eq!(admin.pressing_id(), object::id(&p));
@@ -51,6 +63,7 @@ fun new_derives_the_pressing_and_its_cap_off_the_release() {
 fun events_capture_opening_and_every_state_transition() {
     let mut ctx = tx_context::new_from_hint(@0xA, 0, 0, 0, 0);
     let (cfg, settings_admin) = authorized_settings(&mut ctx);
+    let mut registry = record_registry(&mut ctx);
     let clk = clock_at(100, &mut ctx);
     let (mut rel, cap) = a_release(&mut ctx);
     let release_id = object::id(&rel);
@@ -69,7 +82,7 @@ fun events_capture_opening_and_every_state_transition() {
 
     // The first sale settles Scheduled to Active, then an explicit pause emits the
     // next transition. Event order is the state history an indexer will replay.
-    let record = p.mint_next(&cfg, &clk);
+    let record = mint_next(&mut p, &mut registry, &cfg, &clk, &ctx);
     p.set_state(&admin, pressing::new_paused_state());
 
     let changed = event::events_by_type<pressing::PressingStateChangedEvent>();
@@ -87,6 +100,7 @@ fun events_capture_opening_and_every_state_transition() {
     destroy(cap);
     destroy(cfg);
     destroy(settings_admin);
+    destroy(registry);
     clk.destroy_for_testing();
 }
 
@@ -96,37 +110,49 @@ fun events_capture_opening_and_every_state_transition() {
 fun numbers_advance_gap_free_and_records_are_addressable() {
     let mut ctx = tx_context::new_from_hint(@0xA, 0, 0, 0, 0);
     let (cfg, settings_admin) = authorized_settings(&mut ctx);
+    let mut registry = record_registry(&mut ctx);
     let clk = clock_at(1_000, &mut ctx);
     let (mut p, admin) = pressing::new_for_testing(id(@0xBEEF), &mut ctx);
-    let pressing_id = object::id(&p);
+    let registry_id = object::id(&registry);
+    let release_id = id(@0xBEEF);
 
-    // Nothing pressed yet — number 0 does not exist, and neither does 1.
-    assert!(p.record_id(0).is_none());
-    assert!(p.record_id(1).is_none());
+    assert_eq!(registry.supply(release_id), 0);
 
     // The counter picks every number; a caller never gets to choose one.
-    let r1 = p.mint_next(&cfg, &clk);
-    let r2 = p.mint_next(&cfg, &clk);
-    let r3 = p.mint_next(&cfg, &clk);
+    let r1 = mint_next(&mut p, &mut registry, &cfg, &clk, &ctx);
+    let r2 = mint_next(&mut p, &mut registry, &cfg, &clk, &ctx);
+    let r3 = mint_next(&mut p, &mut registry, &cfg, &clk, &ctx);
 
     assert_eq!(p.supply(), 3);
     assert_eq!(r1.release_id(), id(@0xBEEF));
 
-    // Each sits at exactly the address its position in the pressing derives to.
-    assert_eq!(*p.record_id(1).borrow(), object::id(&r1));
-    assert_eq!(*p.record_id(3).borrow(), object::id(&r3));
-    assert!(p.record_id(4).is_none());
-    assert_eq!(record::derive_address(pressing_id, 1).to_id(), object::id(&r1));
-    assert!(record::derive_address(id(@0xD0), 1).to_id() != object::id(&r1));
+    assert_eq!(registry.supply(release_id), 3);
+    assert_eq!(r1.number(), 1);
+    assert_eq!(r2.number(), 2);
+    assert_eq!(r3.number(), 3);
+    assert_eq!(record::derive_address(registry_id, release_id, 1).to_id(), object::id(&r1));
+    assert!(record::derive_address(id(@0xD0), release_id, 1).to_id() != object::id(&r1));
 
     let created = event::events_by_type<record::RecordCreatedEvent>();
     assert_eq!(created.length(), 3);
-    let (record_id, parent_id, release_id, number, witness) =
+    let (
+        record_id,
+        event_registry_id,
+        event_release_id,
+        number,
+        created_at_ms,
+        purchase_currency,
+        purchased_by,
+        witness,
+    ) =
         record::record_created_event_fields(created[2]);
     assert_eq!(record_id, object::id(&r3));
-    assert_eq!(parent_id, pressing_id);
-    assert_eq!(release_id, id(@0xBEEF));
+    assert_eq!(event_registry_id, registry_id);
+    assert_eq!(event_release_id, release_id);
     assert_eq!(number, 3);
+    assert_eq!(created_at_ms, 1_000);
+    assert_eq!(purchase_currency, type_name::with_defining_ids<SUI>());
+    assert_eq!(purchased_by, @0xA);
     assert_eq!(witness, type_name::with_defining_ids<pressing::MintWitness>());
 
     record::destroy(r1);
@@ -135,6 +161,7 @@ fun numbers_advance_gap_free_and_records_are_addressable() {
     p.destroy_for_testing(admin);
     destroy(cfg);
     destroy(settings_admin);
+    destroy(registry);
     clk.destroy_for_testing();
 }
 
@@ -144,15 +171,17 @@ fun numbers_advance_gap_free_and_records_are_addressable() {
 fun a_pressing_cannot_mint_until_its_witness_is_authorized() {
     let mut ctx = tx_context::new_from_hint(@0xA, 0, 0, 0, 0);
     let (cfg, settings_admin) = settings::new_for_testing(&mut ctx);
+    let mut registry = record_registry(&mut ctx);
     let clk = clock_at(1_000, &mut ctx);
     let (mut p, admin) = pressing::new_for_testing(id(@0xBEEF), &mut ctx);
 
-    let r = p.mint_next(&cfg, &clk);
+    let r = mint_next(&mut p, &mut registry, &cfg, &clk, &ctx);
 
     record::destroy(r);
     p.destroy_for_testing(admin);
     destroy(cfg);
     destroy(settings_admin);
+    destroy(registry);
     clk.destroy_for_testing();
 }
 
@@ -162,16 +191,18 @@ fun a_pressing_cannot_mint_until_its_witness_is_authorized() {
 fun a_scheduled_run_presses_nothing_before_its_start() {
     let mut ctx = tx_context::new_from_hint(@0xA, 0, 0, 0, 0);
     let (cfg, settings_admin) = authorized_settings(&mut ctx);
+    let mut registry = record_registry(&mut ctx);
     let clk = clock_at(50, &mut ctx);
     let (mut p, admin) = pressing::new_for_testing(id(@0xBEEF), &mut ctx);
 
     p.set_state(&admin, pressing::new_scheduled_state(100)); // opens later
-    let r = p.mint_next(&cfg, &clk);
+    let r = mint_next(&mut p, &mut registry, &cfg, &clk, &ctx);
 
     record::destroy(r);
     p.destroy_for_testing(admin);
     destroy(cfg);
     destroy(settings_admin);
+    destroy(registry);
     clk.destroy_for_testing();
 }
 
@@ -179,6 +210,7 @@ fun a_scheduled_run_presses_nothing_before_its_start() {
 fun a_scheduled_run_opens_itself_at_its_start() {
     let mut ctx = tx_context::new_from_hint(@0xA, 0, 0, 0, 0);
     let (cfg, settings_admin) = authorized_settings(&mut ctx);
+    let mut registry = record_registry(&mut ctx);
     let clk = clock_at(150, &mut ctx);
     let (mut p, admin) = pressing::new_for_testing(id(@0xBEEF), &mut ctx);
 
@@ -192,7 +224,7 @@ fun a_scheduled_run_opens_itself_at_its_start() {
     assert_eq!(*p.start_timestamp_ms().borrow(), 100);
 
     // The first sale settles the state on its way through.
-    let r = p.mint_next(&cfg, &clk);
+    let r = mint_next(&mut p, &mut registry, &cfg, &clk, &ctx);
     assert_eq!(p.supply(), 1);
     assert!(p.is_active());
     assert!(!p.is_scheduled());
@@ -202,6 +234,7 @@ fun a_scheduled_run_opens_itself_at_its_start() {
     p.destroy_for_testing(admin);
     destroy(cfg);
     destroy(settings_admin);
+    destroy(registry);
     clk.destroy_for_testing();
 }
 
@@ -209,19 +242,21 @@ fun a_scheduled_run_opens_itself_at_its_start() {
 fun the_start_is_inclusive() {
     let mut ctx = tx_context::new_from_hint(@0xA, 0, 0, 0, 0);
     let (cfg, settings_admin) = authorized_settings(&mut ctx);
+    let mut registry = record_registry(&mut ctx);
     let clk = clock_at(100, &mut ctx);
     let (mut p, admin) = pressing::new_for_testing(id(@0xBEEF), &mut ctx);
 
     // Exactly on the moment, not a millisecond after.
     p.set_state(&admin, pressing::new_scheduled_state(100));
     assert!(p.is_selling(&clk));
-    let r = p.mint_next(&cfg, &clk);
+    let r = mint_next(&mut p, &mut registry, &cfg, &clk, &ctx);
     assert!(p.is_active());
 
     record::destroy(r);
     p.destroy_for_testing(admin);
     destroy(cfg);
     destroy(settings_admin);
+    destroy(registry);
     clk.destroy_for_testing();
 }
 
@@ -229,6 +264,7 @@ fun the_start_is_inclusive() {
 fun pausing_a_scheduled_run_outranks_a_moment_that_has_passed() {
     let mut ctx = tx_context::new_from_hint(@0xA, 0, 0, 0, 0);
     let (cfg, settings_admin) = authorized_settings(&mut ctx);
+    let mut registry = record_registry(&mut ctx);
     let clk = clock_at(150, &mut ctx);
     let (mut p, admin) = pressing::new_for_testing(id(@0xBEEF), &mut ctx);
 
@@ -238,12 +274,13 @@ fun pausing_a_scheduled_run_outranks_a_moment_that_has_passed() {
     p.set_state(&admin, pressing::new_scheduled_state(100));
     p.set_state(&admin, pressing::new_paused_state());
     assert!(!p.is_selling(&clk));
-    let r = p.mint_next(&cfg, &clk);
+    let r = mint_next(&mut p, &mut registry, &cfg, &clk, &ctx);
 
     record::destroy(r);
     p.destroy_for_testing(admin);
     destroy(cfg);
     destroy(settings_admin);
+    destroy(registry);
     clk.destroy_for_testing();
 }
 
@@ -251,6 +288,7 @@ fun pausing_a_scheduled_run_outranks_a_moment_that_has_passed() {
 fun a_run_walks_scheduled_then_active_then_paused_then_active() {
     let mut ctx = tx_context::new_from_hint(@0xA, 0, 0, 0, 0);
     let (cfg, settings_admin) = authorized_settings(&mut ctx);
+    let mut registry = record_registry(&mut ctx);
     let clk = clock_at(50, &mut ctx);
     let (mut rel, cap) = a_release(&mut ctx);
 
@@ -264,7 +302,7 @@ fun a_run_walks_scheduled_then_active_then_paused_then_active() {
     p.set_state(&admin, pressing::new_active_state());
     assert!(p.is_selling(&clk));
     assert!(p.start_timestamp_ms().is_none());
-    let r1 = p.mint_next(&cfg, &clk);
+    let r1 = mint_next(&mut p, &mut registry, &cfg, &clk, &ctx);
 
     // Stopped, and the sequence holds where it was.
     p.set_state(&admin, pressing::new_paused_state());
@@ -274,9 +312,15 @@ fun a_run_walks_scheduled_then_active_then_paused_then_active() {
 
     // Started again: the run picks up at 2, never at 1.
     p.set_state(&admin, pressing::new_active_state());
-    let r2 = p.mint_next(&cfg, &clk);
-    assert_eq!(record::derive_address(object::id(&p), 1).to_id(), object::id(&r1));
-    assert_eq!(record::derive_address(object::id(&p), 2).to_id(), object::id(&r2));
+    let r2 = mint_next(&mut p, &mut registry, &cfg, &clk, &ctx);
+    assert_eq!(
+        record::derive_address(object::id(&registry), object::id(&rel), 1).to_id(),
+        object::id(&r1),
+    );
+    assert_eq!(
+        record::derive_address(object::id(&registry), object::id(&rel), 2).to_id(),
+        object::id(&r2),
+    );
 
     record::destroy(r1);
     record::destroy(r2);
@@ -285,6 +329,7 @@ fun a_run_walks_scheduled_then_active_then_paused_then_active() {
     destroy(cap);
     destroy(cfg);
     destroy(settings_admin);
+    destroy(registry);
     clk.destroy_for_testing();
 }
 
@@ -292,6 +337,7 @@ fun a_run_walks_scheduled_then_active_then_paused_then_active() {
 fun set_state_pauses_and_resumes_the_whole_run() {
     let mut ctx = tx_context::new_from_hint(@0xA, 0, 0, 0, 0);
     let (cfg, settings_admin) = authorized_settings(&mut ctx);
+    let mut registry = record_registry(&mut ctx);
     let clk = clock_at(1_000, &mut ctx);
     let (mut p, admin) = pressing::new_for_testing(id(@0xBEEF), &mut ctx);
 
@@ -302,13 +348,14 @@ fun set_state_pauses_and_resumes_the_whole_run() {
     // Resuming picks the sequence back up where it left off — nothing came down.
     p.set_state(&admin, pressing::new_active_state());
     assert!(p.is_active());
-    let r = p.mint_next(&cfg, &clk);
+    let r = mint_next(&mut p, &mut registry, &cfg, &clk, &ctx);
     assert_eq!(p.supply(), 1);
 
     record::destroy(r);
     p.destroy_for_testing(admin);
     destroy(cfg);
     destroy(settings_admin);
+    destroy(registry);
     clk.destroy_for_testing();
 }
 
@@ -316,16 +363,18 @@ fun set_state_pauses_and_resumes_the_whole_run() {
 fun a_paused_pressing_presses_nothing() {
     let mut ctx = tx_context::new_from_hint(@0xA, 0, 0, 0, 0);
     let (cfg, settings_admin) = authorized_settings(&mut ctx);
+    let mut registry = record_registry(&mut ctx);
     let clk = clock_at(1_000, &mut ctx);
     let (mut p, admin) = pressing::new_for_testing(id(@0xBEEF), &mut ctx);
 
     p.set_state(&admin, pressing::new_paused_state());
-    let r = p.mint_next(&cfg, &clk);
+    let r = mint_next(&mut p, &mut registry, &cfg, &clk, &ctx);
 
     record::destroy(r);
     p.destroy_for_testing(admin);
     destroy(cfg);
     destroy(settings_admin);
+    destroy(registry);
     clk.destroy_for_testing();
 }
 
@@ -380,7 +429,7 @@ fun a_release_can_only_ever_open_one_pressing() {
     let (mut rel, cap) = a_release(&mut ctx);
 
     let (p0, a0) = pressing::new(&mut rel, &cap, pressing::new_active_state());
-    // A second pressing for the same release would be a second number sequence.
+    // A second active Pressing would duplicate the release's sale authority/state.
     let (p1, a1) = pressing::new(&mut rel, &cap, pressing::new_active_state());
 
     p0.destroy_for_testing(a0);

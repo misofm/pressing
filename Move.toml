@@ -6,4 +6,4 @@ authors = ["Miso Labs, Inc. (build@miso.network)"]
 
 [dependencies]
 miso = { git = "https://github.com/misonetwork/protocol.git", rev = "7bda0bb740c32a75ef76c0739cb671b3de77d338" }
-miso_record = { git = "https://github.com/misofm/record.git", rev = "a235ffd41e8d2b1e76e1c7bba292e5ee11074e5b" }
+miso_record = { git = "https://github.com/misofm/record.git", rev = "c3f5310e0f52b1aa5553636c7f8edae7d01d0010" }

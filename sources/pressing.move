@@ -4,11 +4,12 @@
 /// A release's record production — its *Pressing*.
 ///
 /// A release has exactly one pressing, and the pressing is one uncapped run of
-/// records: every copy ever made draws its number from this single counter, forever.
+/// records sold through this implementation. Canonical Record numbering lives in
+/// `miso_record::record::RecordRegistry`, so replacing the sales package does not
+/// restart a release's sequence.
 /// There are no editions, no supply caps, and no sold-out state — scarcity on Miso is
 /// what a record *accrues* (playtime above all), not how few of it were printed. The
-/// pressing owns two things and only two things: the **run** the records number
-/// against, and the **switch** that stops it.
+/// pressing owns the sale run and the **switch** that stops it.
 ///
 /// ```text
 /// Release
@@ -21,13 +22,11 @@
 /// # Everything is address math
 ///
 /// A pressing's UID is derived off its release's UID at a singleton key, its admin
-/// cap's and each listing's off the pressing's, and records off the pressing's at
-/// their number. So every object in the tree is reachable from the release id alone,
-/// by pure computation — no registry, no pointer that has to be maintained, and no
-/// stored set of listings: a listing either exists at its derived address or it does
-/// not (`listing::has_listing`), and `ListingOpenedEvent<Currency>` enumerates them
-/// for an indexer. It also makes the number sequence gap-free for free, and every
-/// record verifiable against its pressing from its address and number.
+/// cap's and each listing's off the pressing's. Record IDs are instead derived from
+/// the singleton Record Registry at `(release_id, number)`, remaining stable if this
+/// sales package is replaced. Listings need no stored index: a listing either exists
+/// at its derived address or it does not (`listing::has_listing`), and
+/// `ListingOpenedEvent<Currency>` enumerates them for an indexer.
 ///
 /// # Starting and stopping is state, never teardown
 ///
@@ -62,7 +61,7 @@
 module miso_pressing::pressing;
 
 use miso::release::{Release, ReleaseAdminCap};
-use miso_record::record::{Self, Record};
+use miso_record::record::{Self, Record, RecordRegistry};
 use miso_record::settings::Settings;
 use sui::clock::Clock;
 use sui::derived_object;
@@ -82,19 +81,19 @@ public struct PressingAdminCapKey() has copy, drop, store;
 
 /// Witness authorizing this package's Record mints. Only `mint_next` constructs it,
 /// so an authorized value means the mint passed through the pressing's state and
-/// gap-free counter. `miso_record::settings::Settings` authorizes this type.
+/// sale checks. `miso_record::settings::Settings` authorizes this type.
 public struct MintWitness() has drop;
 
-/// A release's record production: one uncapped run. Owns the number sequence the
-/// records derive from, and the switch that stops the whole run. Never destroyed.
+/// A release's record production: one uncapped sale run and its run-wide switch.
+/// Never destroyed.
 public struct Pressing has key {
     id: UID,
     /// The release these records are copies of.
     release_id: ID,
     /// Whether the run sells at all, in any currency.
     state: PressingState,
-    /// Records pressed so far; also the most recent number. Read on every mint — this
-    /// is the sequence itself, not a statistic.
+    /// Records sold through this Pressing. This is a sales statistic, not the
+    /// canonical Record number sequence; that belongs to `RecordRegistry`.
     supply: u64,
 }
 
@@ -239,15 +238,17 @@ public(package) fun uid(self: &Pressing): &UID {
     &self.id
 }
 
-/// Press the next Record in the run: advance the counter and derive its UID off this
-/// pressing at the new number. The 1-based number is unique across every currency the
-/// pressing sells in. Aborts if the run is paused or has not opened yet — the
-/// run-wide switch is checked here, so no sale path can miss it. `settings` must
-/// authorize this package's `MintWitness` type.
-public(package) fun mint_next(
+/// Press the next Record in the run. The singleton Registry allocates the canonical
+/// per-release number and derives the UID; this Pressing only validates sale state
+/// and tracks how many sales passed through this implementation. Aborts if the run is
+/// paused or has not opened yet. `settings` must authorize this package's
+/// `MintWitness` type.
+public(package) fun mint_next<Currency>(
     self: &mut Pressing,
+    registry: &mut RecordRegistry,
     settings: &Settings,
     clock: &Clock,
+    ctx: &TxContext,
 ): Record {
     // Settle the schedule before any sales logic. A `Scheduled` run past its start
     // becomes `Active` right here — the clock is the only authority that transition
@@ -266,12 +267,13 @@ public(package) fun mint_next(
     };
 
     self.supply = self.supply + 1;
-    record::mint(
-        &mut self.id,
+    record::mint<MintWitness, Currency>(
+        registry,
         settings,
         MintWitness(),
         self.release_id,
-        self.supply,
+        clock,
+        ctx,
     )
 }
 
@@ -292,7 +294,8 @@ public fun release_id(self: &Pressing): ID {
     self.release_id
 }
 
-/// Records pressed so far; also the most recent number.
+/// Records sold through this Pressing. This may differ from the Registry's canonical
+/// release supply after a sales-package replacement.
 public fun supply(self: &Pressing): u64 {
     self.supply
 }
@@ -360,15 +363,6 @@ public fun start_timestamp_ms(self: &Pressing): Option<u64> {
         PressingState::Scheduled { start_timestamp_ms } => option::some(start_timestamp_ms),
         _ => option::none(),
     }
-}
-
-/// The id of record `number`, or `none` if the pressing has not pressed that many.
-/// Composes `supply()` with `record::derive_address`, so it is a convenience, not a
-/// capability.
-#[test_only]
-public fun record_id(self: &Pressing, number: u64): Option<ID> {
-    if (number == 0 || number > self.supply) return option::none();
-    option::some(record::derive_address(self.id.to_inner(), number).to_id())
 }
 
 /// Where `pressing_id`'s admin cap was minted. The cap is transferable, so this is not
