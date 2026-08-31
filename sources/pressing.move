@@ -27,8 +27,7 @@
 /// stored set of listings: a listing either exists at its derived address or it does
 /// not (`listing::has_listing`), and `ListingOpenedEvent<Currency>` enumerates them
 /// for an indexer. It also makes the number sequence gap-free for free, and every
-/// record verifiable against its pressing from chain state alone
-/// by comparing the certificate and derived address.
+/// record verifiable against its pressing from its address and number.
 ///
 /// # Starting and stopping is state, never teardown
 ///
@@ -63,8 +62,8 @@
 module miso_pressing::pressing;
 
 use miso::release::{Release, ReleaseAdminCap};
-use miso_pressing::certificate::{Self, Certificate};
 use miso_record::record::{Self, Record};
+use miso_record::settings::Settings;
 use sui::clock::Clock;
 use sui::derived_object;
 use sui::event::emit;
@@ -80,6 +79,11 @@ public struct PressingKey() has copy, drop, store;
 
 /// Key for deriving the `PressingAdminCap`'s UID off the PRESSING's UID.
 public struct PressingAdminCapKey() has copy, drop, store;
+
+/// Witness authorizing this package's Record mints. Only `mint_next` constructs it,
+/// so an authorized value means the mint passed through the pressing's state and
+/// gap-free counter. `miso_record::settings::Settings` authorizes this type.
+public struct MintWitness() has drop;
 
 /// A release's record production: one uncapped run. Owns the number sequence the
 /// records derive from, and the switch that stops the whole run. Never destroyed.
@@ -235,17 +239,16 @@ public(package) fun uid(self: &Pressing): &UID {
     &self.id
 }
 
-/// Press the next record in the run: advance the counter, derive the record's UID off
-/// this pressing at the new number, and embed its purchaser and sale terms in the same
-/// transaction. The 1-based number is unique across every currency the pressing sells
-/// in. Aborts if the run is paused or has not opened yet — the run-wide switch is
-/// checked here, so no sale path can miss it.
-public(package) fun mint_next<Currency>(
+/// Press the next Record in the run: advance the counter and derive its UID off this
+/// pressing at the new number. The 1-based number is unique across every currency the
+/// pressing sells in. Aborts if the run is paused or has not opened yet — the
+/// run-wide switch is checked here, so no sale path can miss it. `settings` must
+/// authorize this package's `MintWitness` type.
+public(package) fun mint_next(
     self: &mut Pressing,
-    purchased_by: address,
-    purchase_price: u64,
+    settings: &Settings,
     clock: &Clock,
-): Record<Certificate> {
+): Record {
     // Settle the schedule before any sales logic. A `Scheduled` run past its start
     // becomes `Active` right here — the clock is the only authority that transition
     // needs, and this is the one place a sale can reach it.
@@ -263,16 +266,10 @@ public(package) fun mint_next<Currency>(
     };
 
     self.supply = self.supply + 1;
-    let certificate = certificate::new<Currency>(
-        self.id.to_inner(),
-        self.supply,
-        purchased_by,
-        purchase_price,
-        clock.timestamp_ms(),
-    );
-    record::new(
+    record::mint(
         &mut self.id,
-        certificate,
+        settings,
+        MintWitness(),
         self.release_id,
         self.supply,
     )

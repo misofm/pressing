@@ -29,9 +29,9 @@ Release
   computation — no registry, no pointer to maintain, and **no stored set of listings**: a
   listing either exists at its derived address or it does not (`listing::has_listing`),
   and `ListingOpenedEvent<Currency>` enumerates them for an indexer. The numbers are
-  gap-free by construction. A consumer can check provenance directly: the embedded
-  certificate's `parent_id` is the pressing id, and the record id must equal
-  `record::derive_address(parent_id, number).to_id()`.
+  gap-free by construction. The Record creation event names the pressing parent,
+  number, and authorized witness; the record id must equal
+  `record::derive_address(pressing_id, number).to_id()`.
 
 - **The listing key is phantom-typed.** `ListingKey<Currency>()` puts the currency in
   the key's *type* rather than in a stored `TypeName`, so distinct currencies are
@@ -85,16 +85,21 @@ Release
   permanent run has nothing to count down to, and a time-limited sale is scarcity
   theater this design rejects. Ending a campaign is `set_state(Paused)`.
 
-- **One embedded certificate.** A number is only meaningful inside the sequence that
-  issued it, and what a copy sold for is a fact about the same sale — so `mint_next`
-  creates `Certificate { parent_id, number, purchased_by, purchase_currency,
-  purchase_price, created_at_ms }` and passes it directly to `record::new`. The result
-  is a `Record<Certificate>` whose certificate is present from birth, cannot be
-  detached, and is read with `record.certificate()`. `Certificate` has `drop, store`
-  but not `copy`; its fields are private and its constructor is `public(package)`, so an
-  external package cannot construct this trusted specialization. The stored parent
-  and number also make provenance explicit: the record id must equal
-  `record::derive_address(certificate.parent_id(), certificate.number()).to_id()`.
+- **One concrete Record, one authorized witness.** `miso_record::Record` is Miso's
+  distribution format, not a generic substrate. `pressing::MintWitness` is
+  non-copyable and constructible only inside the `pressing` module; `mint_next` is its
+  sole constructor path. The shared `miso_record::settings::Settings` must authorize
+  that witness type before a listing can mint. This keeps one stable Record type while
+  allowing Miso to add or revoke distribution mechanisms as state changes. Pressing
+  remains the Record UID's parent—there is no global Record registry or shared mint
+  counter—so unrelated distribution paths do not serialize through one object.
+
+- **Sale facts are events, not Record schema.** Currency is in the
+  `RecordSoldEvent<Currency>` type; the event also snapshots the listing, pressing,
+  release, Record, number, accepted price, paid amount, buyer, and clock timestamp.
+  `RecordCreatedEvent` independently records the parent, number, and authorized
+  witness. Those facts are indexable without making every Record carry Pressing's
+  sales vocabulary forever.
 
 - **Two caps, split along the money.** Opening a pressing needs the release's
   `ReleaseAdminCap` (the protocol's `release::uid_mut` enforces it) and hands back a
@@ -109,13 +114,11 @@ Release
   Both are `key, store`, so a vault or multisig can custody them — the package implements
   no recovery.
 
-- **Minting authority is the certificate constructor.** `miso_record` intentionally
-  allows any package to create its own `Record<C>` specialization. Trust attaches to
-  the concrete certificate type: only this package can construct
-  `miso_pressing::certificate::Certificate`, and production construction occurs only
-  on the listing purchase path. A listing may be free, so the certificate attests to the
-  recorded sale terms rather than to nonzero payment. There is no shared settings object,
-  allowlist, or mint witness in this architecture.
+- **Minting authority is explicit and revocable.** Authorizing
+  `miso_pressing::pressing::MintWitness` enables this distribution path; revoking it
+  makes even an otherwise valid free or paid listing abort in `record::mint`. Settings
+  is borrowed immutably on purchases, so different Pressings can still execute in
+  parallel.
 
 ## Usage
 
@@ -137,7 +140,7 @@ Then, per sale:
 
 ```move
 // `payment` is a Balance<SUI> — off the buyer's accumulator, or `coin.into_balance()`.
-let record: Record<Certificate> = listing.buy(&mut pressing, payment, &clock, ctx);
+let record: Record = listing.buy(&mut pressing, payment, &record_settings, &clock, ctx);
 record::transfer(record, buyer);
 ```
 
@@ -170,20 +173,19 @@ the drift a shared view prevents. `authorize` and `uid` on the pressing are
 ## Layout
 
 ```
-sources/pressing.move     the run: counter, schedule + switch, certificate minting, cap
+sources/pressing.move     the run: counter, schedule + switch, mint witness, cap
 sources/listing.move      one currency's offer: price, state, buy
-sources/certificate.move  embedded provenance: parent, number, currency, price, time
 tests/
 ```
 
-Depends on [`miso-record`](https://github.com/misofm/record) (the generic,
-key-only `Record<Certificate>`) and the miso-protocol (`Release` /
+Depends on [`miso-record`](https://github.com/misofm/record) (the concrete,
+key-only witness-authorized `Record`) and the miso-protocol (`Release` /
 `ReleaseAdminCap`). Both dependencies are pinned to reviewed git revisions so a
 checkout builds against the exact module-controlled transfer API it was tested with:
 
 ```toml
 miso = { git = "https://github.com/misonetwork/protocol.git", rev = "7bda0bb740c32a75ef76c0739cb671b3de77d338" }
-miso_record = { git = "https://github.com/misofm/record.git", subdir = "move", rev = "46dadad176ceadef8f698498968a1688af96960b" }
+miso_record = { git = "https://github.com/misofm/record.git", rev = "a235ffd41e8d2b1e76e1c7bba292e5ee11074e5b" }
 ```
 
 ## Build

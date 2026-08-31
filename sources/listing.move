@@ -48,19 +48,18 @@
 /// number sequence. So a listing carries no schedule — only whether its currency is
 /// taken.
 ///
-/// # The certificate
+/// # Sale provenance
 ///
-/// What the buyer paid is not part of the record — it is a fact about the *sale* — so
-/// it rides out on the record's `Certificate`, stamped by `pressing::mint_next`
-/// alongside the number. One field, written once, in the transaction that pressed the
-/// record. `RecordSoldEvent` also snapshots both the accepted `Price` and the amount
-/// paid, so an indexer can distinguish fixed sales from floor sales and compute tips
-/// without replaying listing state.
+/// What the buyer paid is not part of the Record — it is a fact about the *sale*.
+/// `RecordSoldEvent` snapshots the accepted `Price`, actual payment, buyer, and clock
+/// timestamp. The Record creation event separately records the authorized witness,
+/// parent, and number, so provenance remains explicit without changing Record's
+/// universal object schema.
 module miso_pressing::listing;
 
-use miso_pressing::certificate::Certificate;
 use miso_pressing::pressing::{Pressing, PressingAdminCap};
 use miso_record::record::Record;
+use miso_record::settings::Settings;
 use sui::balance::{Self, Balance};
 use sui::clock::Clock;
 use sui::derived_object;
@@ -129,6 +128,7 @@ public struct RecordSoldEvent<phantom Currency> has copy, drop {
     price: Price,
     paid: u64,
     buyer: address,
+    created_at_ms: u64,
 }
 
 /// A currency listing's new enabled/disabled state.
@@ -226,8 +226,8 @@ public fun new<Currency>(
 /// `Fixed`; at least, for `Floor`). The ENTIRE payment forwards to the release's
 /// address — under `Floor`, anything above the floor is kept as a tip, not refunded.
 /// The record's number is the pressing's next 1-based value, shared with every other
-/// currency selling the same run, and its UID is derived off the pressing. The sale's
-/// transaction sender and terms are embedded in the record's `Certificate`.
+/// currency selling the same run, and its UID is derived off the pressing. `settings`
+/// must authorize this package's `MintWitness`.
 ///
 /// Both switches must be open: this listing `Enabled`, checked here, and the run
 /// selling at this moment, checked in `pressing::mint_next`.
@@ -236,9 +236,10 @@ public fun buy<Currency>(
     self: &mut Listing<Currency>,
     pressing: &mut Pressing,
     payment: Balance<Currency>,
+    settings: &Settings,
     clock: &Clock,
     ctx: &TxContext,
-): Record<Certificate> {
+): Record {
     assert!(self.pressing_id == object::id(pressing), EWrongPressing);
     assert!(self.is_enabled(), EListingDisabled);
 
@@ -257,11 +258,11 @@ public fun buy<Currency>(
         payment.destroy_zero();
     };
 
-    // The pressing owns the number, checks the run-wide switch, stamps the record's
-    // birth date off the clock, and embeds who purchased it and what they paid. Read
-    // the sender once so the certificate and sale event cannot disagree.
+    // The pressing owns the number and checks the run-wide switch. Read the sender
+    // and clock once so the mint and sale event describe one atomic purchase.
     let purchased_by = ctx.sender();
-    let record = pressing.mint_next<Currency>(purchased_by, paid, clock);
+    let created_at_ms = clock.timestamp_ms();
+    let record = pressing.mint_next(settings, clock);
 
     emit(RecordSoldEvent<Currency> {
         listing_id: self.id.to_inner(),
@@ -273,6 +274,7 @@ public fun buy<Currency>(
         price: self.price,
         paid,
         buyer: purchased_by,
+        created_at_ms,
     });
 
     record
@@ -392,7 +394,7 @@ public fun opened_event_fields<Currency>(
 #[test_only]
 public fun sold_event_fields<Currency>(
     event: &RecordSoldEvent<Currency>,
-): (ID, ID, ID, ID, u64, Price, u64, address) {
+): (ID, ID, ID, ID, u64, Price, u64, address, u64) {
     (
         event.listing_id,
         event.pressing_id,
@@ -402,6 +404,7 @@ public fun sold_event_fields<Currency>(
         event.price,
         event.paid,
         event.buyer,
+        event.created_at_ms,
     )
 }
 

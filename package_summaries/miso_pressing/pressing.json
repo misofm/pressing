@@ -3,19 +3,19 @@
     "address": "miso_pressing",
     "name": "pressing"
   },
-  "doc": " A release's record production — its *Pressing*.\n\n A release has exactly one pressing, and the pressing is one uncapped run of\n records: every copy ever made draws its number from this single counter, forever.\n There are no editions, no supply caps, and no sold-out state — scarcity on Miso is\n what a record *accrues* (playtime above all), not how few of it were printed. The\n pressing owns two things and only two things: the **run** the records number\n against, and the **switch** that stops it.\n\n ```text\n Release\n  └─ Pressing              the run, and when it sells at all       PressingKey()\n      ├─ PressingAdminCap  authority over price and state         PressingAdminCapKey()\n      ├─ Listing<SUI>      what it costs in one currency          ListingKey<SUI>()\n      └─ Listing<USDC>\n ```\n\n # Everything is address math\n\n A pressing's UID is derived off its release's UID at a singleton key, its admin\n cap's and each listing's off the pressing's, and records off the pressing's at\n their number. So every object in the tree is reachable from the release id alone,\n by pure computation — no registry, no pointer that has to be maintained, and no\n stored set of listings: a listing either exists at its derived address or it does\n not (`listing::has_listing`), and `ListingOpenedEvent<Currency>` enumerates them\n for an indexer. It also makes the number sequence gap-free for free, and every\n record verifiable against its pressing from chain state alone\n by comparing the certificate and derived address.\n\n # Starting and stopping is state, never teardown\n\n Nothing here is ever destroyed, sealed, or wound down — deleting a pressing would\n strand its whole derived subtree, so there is no destructor at all. The run's\n lifecycle is `Scheduled → Active → Paused → Active`: it opens itself at its\n scheduled start (no artist transaction, and nobody can buy early), then the artist\n stops and starts it at will. The first transition is real, not computed — the first\n sale past the start rewrites `Scheduled` to `Active` inside `mint_next`, which is\n why `Scheduled` only ever describes a run still waiting. Below it, each listing's\n `Enabled | Disabled` governs one currency. A run that is paused or not yet open\n sells in no currency, whatever the listings say.\n\n There is no end state and no expiry: an uncapped, permanent run has nothing to\n count down to, and a time-limited sale is scarcity theater this design rejects. An\n artist ending a campaign pauses it.\n\n # Authority\n\n Opening a pressing needs the release's `ReleaseAdminCap`, enforced by the\n protocol's `release::uid_mut`, and hands back a `PressingAdminCap`. Everything\n after that — pricing, pausing, opening listings — authorizes against the pressing\n cap alone.\n\n The split is deliberate and it is about money, not tidiness. `ReleaseAdminCap`\n yields `release::uid_mut`, and `balance::withdraw_funds_from_object` is gated on\n `&mut UID` alone — so the release cap can withdraw the sales revenue that `buy`\n forwards to the release's address. Under one cap, \"may reprice a listing\" and\n \"may take the money\" would be the same grant. The caps may be held together. If\n separated, the pressing cap remains issuance authority: it controls listing creation,\n price, and availability, but cannot withdraw revenue.",
+  "doc": " A release's record production — its *Pressing*.\n\n A release has exactly one pressing, and the pressing is one uncapped run of\n records: every copy ever made draws its number from this single counter, forever.\n There are no editions, no supply caps, and no sold-out state — scarcity on Miso is\n what a record *accrues* (playtime above all), not how few of it were printed. The\n pressing owns two things and only two things: the **run** the records number\n against, and the **switch** that stops it.\n\n ```text\n Release\n  └─ Pressing              the run, and when it sells at all       PressingKey()\n      ├─ PressingAdminCap  authority over price and state         PressingAdminCapKey()\n      ├─ Listing<SUI>      what it costs in one currency          ListingKey<SUI>()\n      └─ Listing<USDC>\n ```\n\n # Everything is address math\n\n A pressing's UID is derived off its release's UID at a singleton key, its admin\n cap's and each listing's off the pressing's, and records off the pressing's at\n their number. So every object in the tree is reachable from the release id alone,\n by pure computation — no registry, no pointer that has to be maintained, and no\n stored set of listings: a listing either exists at its derived address or it does\n not (`listing::has_listing`), and `ListingOpenedEvent<Currency>` enumerates them\n for an indexer. It also makes the number sequence gap-free for free, and every\n record verifiable against its pressing from its address and number.\n\n # Starting and stopping is state, never teardown\n\n Nothing here is ever destroyed, sealed, or wound down — deleting a pressing would\n strand its whole derived subtree, so there is no destructor at all. The run's\n lifecycle is `Scheduled → Active → Paused → Active`: it opens itself at its\n scheduled start (no artist transaction, and nobody can buy early), then the artist\n stops and starts it at will. The first transition is real, not computed — the first\n sale past the start rewrites `Scheduled` to `Active` inside `mint_next`, which is\n why `Scheduled` only ever describes a run still waiting. Below it, each listing's\n `Enabled | Disabled` governs one currency. A run that is paused or not yet open\n sells in no currency, whatever the listings say.\n\n There is no end state and no expiry: an uncapped, permanent run has nothing to\n count down to, and a time-limited sale is scarcity theater this design rejects. An\n artist ending a campaign pauses it.\n\n # Authority\n\n Opening a pressing needs the release's `ReleaseAdminCap`, enforced by the\n protocol's `release::uid_mut`, and hands back a `PressingAdminCap`. Everything\n after that — pricing, pausing, opening listings — authorizes against the pressing\n cap alone.\n\n The split is deliberate and it is about money, not tidiness. `ReleaseAdminCap`\n yields `release::uid_mut`, and `balance::withdraw_funds_from_object` is gated on\n `&mut UID` alone — so the release cap can withdraw the sales revenue that `buy`\n forwards to the release's address. Under one cap, \"may reprice a listing\" and\n \"may take the money\" would be the same grant. The caps may be held together. If\n separated, the pressing cap remains issuance authority: it controls listing creation,\n price, and availability, but cannot withdraw revenue.",
   "immediate_dependencies": [
     {
       "address": "miso",
       "name": "release"
     },
     {
-      "address": "miso_pressing",
-      "name": "certificate"
+      "address": "miso_record",
+      "name": "record"
     },
     {
       "address": "miso_record",
-      "name": "record"
+      "name": "settings"
     },
     {
       "address": "sui",
@@ -376,16 +376,11 @@
     "mint_next": {
       "source_index": 8,
       "index": 8,
-      "doc": " Press the next record in the run: advance the counter, derive the record's UID off\n this pressing at the new number, and embed its purchaser and sale terms in the same\n transaction. The 1-based number is unique across every currency the pressing sells\n in. Aborts if the run is paused or has not opened yet — the run-wide switch is\n checked here, so no sale path can miss it.",
+      "doc": " Press the next Record in the run: advance the counter and derive its UID off this\n pressing at the new number. The 1-based number is unique across every currency the\n pressing sells in. Aborts if the run is paused or has not opened yet — the\n run-wide switch is checked here, so no sale path can miss it. `settings` must\n authorize this package's `MintWitness` type.",
       "attributes": [],
       "visibility": "Package",
       "entry": false,
-      "type_parameters": [
-        {
-          "name": "Currency",
-          "constraints": []
-        }
-      ],
+      "type_parameters": [],
       "parameters": [
         {
           "name": "self",
@@ -406,12 +401,22 @@
           }
         },
         {
-          "name": "purchased_by",
-          "type_": "address"
-        },
-        {
-          "name": "purchase_price",
-          "type_": "u64"
+          "name": "settings",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "miso_record",
+                    "name": "settings"
+                  },
+                  "name": "Settings",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
         },
         {
           "name": "clock",
@@ -440,21 +445,7 @@
               "name": "record"
             },
             "name": "Record",
-            "type_arguments": [
-              {
-                "phantom": false,
-                "argument": {
-                  "Datatype": {
-                    "module": {
-                      "address": "miso_pressing",
-                      "name": "certificate"
-                    },
-                    "name": "Certificate",
-                    "type_arguments": []
-                  }
-                }
-              }
-            ]
+            "type_arguments": []
           }
         }
       ]
@@ -747,8 +738,26 @@
         }
       }
     },
-    "Pressing": {
+    "MintWitness": {
       "index": 2,
+      "doc": " Witness authorizing this package's Record mints. Only `mint_next` constructs it,\n so an authorized value means the mint passed through the pressing's state and\n gap-free counter. `miso_record::settings::Settings` authorizes this type.",
+      "attributes": [],
+      "abilities": [
+        "Drop"
+      ],
+      "type_parameters": [],
+      "fields": {
+        "positional_fields": true,
+        "fields": {
+          "dummy_field": {
+            "index": 0,
+            "type_": "bool"
+          }
+        }
+      }
+    },
+    "Pressing": {
+      "index": 3,
       "doc": " A release's record production: one uncapped run. Owns the number sequence the\n records derive from, and the switch that stops the whole run. Never destroyed.",
       "attributes": [],
       "abilities": [
@@ -809,7 +818,7 @@
       }
     },
     "PressingAdminCap": {
-      "index": 3,
+      "index": 4,
       "doc": " Authority over a pressing: its state, its listings, and their prices. Deliberately\n *not* the release's cap — see the module doc on why the split is about money.\n `key, store` so a vault or multisig can custody it (there is no recovery here).",
       "attributes": [],
       "abilities": [
@@ -852,7 +861,7 @@
       }
     },
     "PressingOpenedEvent": {
-      "index": 4,
+      "index": 5,
       "doc": " A pointer event, with one exception: it carries the opening `state`. A `Scheduled`\n run rewrites itself to `Active` on its first sale past the start, so an indexer that\n reads the object afterwards cannot recover the scheduled start — this is the only\n place it survives.",
       "attributes": [],
       "abilities": [
@@ -909,7 +918,7 @@
       }
     },
     "PressingStateChangedEvent": {
-      "index": 5,
+      "index": 6,
       "doc": " The pressing's new run-wide state, emitted for both cap-authorized changes and the\n clock-authorized `Scheduled` to `Active` transition on the first sale.",
       "attributes": [],
       "abilities": [

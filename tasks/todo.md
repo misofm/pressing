@@ -1,9 +1,11 @@
 # miso-pressing redesign — one pressing, one uncapped run, no editions
 
-> **2026-08-22 — superseded.** The historical design below used `Settings`,
-> `MintWitness`, and a dynamic-field certificate. The implemented architecture now
-> embeds a package-constructed `Certificate` directly in `Record<Certificate>`; the
-> current source, tests, and README are authoritative.
+> **2026-08-31 — current direction.** Record is again Miso's concrete distribution
+> format. The package now uses shared `miso_record::Settings` and a module-controlled
+> `pressing::MintWitness`; the generic `Record<Certificate>` layer and Pressing
+> certificate have been removed. Pressing remains the UID derivation parent. The
+> historical exploration below is retained for context; current source, tests, README,
+> and audit are authoritative.
 
 Supersedes the Drop / Edition / Listing restructure (see git history for that plan).
 
@@ -105,7 +107,7 @@ Consolidated decision after exploring (and rejecting) permissionless minting and
       `record::derive_id(cert.pressing_id, cert.number) == record.id()` binding
       check, so strict verifiers stay safe; decide then.
 
-- [ ] TypeScript: regenerate `miso-protocol/sdk` codegen; rewrite `sdk/src/drop.ts`
+- [ ] TypeScript: regenerate SDK codegen; rewrite `sdk/src/drop.ts`
       (kill `CurrentDropKey` / `newEdition` / `DropView.edition`); miso-app drops UI +
       `records.ts` field parsing; miso-api checkout `fulfill.ts` PTB (`drop::buy` →
       `listing::buy`); miso-cli publish path. Note: all of these still target published
