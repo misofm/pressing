@@ -4,9 +4,10 @@
 /// One currency's offer on a pressing — a *Listing*.
 ///
 /// A listing answers exactly two questions: **what does it cost** and **can you pay
-/// in this currency**. Everything about *what you get* — the run, the number —
-/// belongs to the `Pressing`. So a pressing sold in SUI and in USDC has two listings,
-/// each with its own price and switch, both drawing on the same number sequence.
+/// in this currency**. Everything about *what you get* belongs to the `Pressing`,
+/// while the singleton `RecordRegistry` allocates its canonical number. So a
+/// pressing sold in SUI and in USDC has two listings with independent prices and
+/// switches, both drawing on the same release sequence.
 ///
 /// A listing's UID is derived off its pressing's UID at `ListingKey<Currency>()`, so
 /// there is exactly one listing per (pressing, currency) — ever — and its address is
@@ -44,9 +45,8 @@
 ///
 /// The **when** lives on the Pressing, not here: its opening time is a fact about the
 /// release going on sale, not about one payment rail, and a run that opened in SUI at
-/// Friday 8pm and in USDC at some other time would have two starts and one
-/// number sequence. So a listing carries no schedule — only whether its currency is
-/// taken.
+/// Friday 8pm and in USDC at some other time would have two starts for one sale run.
+/// So a listing carries no schedule — only whether its currency is taken.
 ///
 /// # Sale provenance
 ///
@@ -218,7 +218,7 @@ public fun new<Currency>(
     transfer::share_object(Listing<Currency> { id, release_id, pressing_id, price, state })
 }
 
-/// Buy one record: pay this listing's price, take the next number out of the pressing.
+/// Buy one record: pay this listing's price and mint the Registry's next Record.
 ///
 /// `payment` is a bare `Balance<Currency>` and must satisfy the price (exactly, for
 /// `Fixed`; at least, for `Floor`). The ENTIRE payment forwards to the release's
